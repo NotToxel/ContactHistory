@@ -1,0 +1,7 @@
+{
+  "contacts": [
+    { "resourceName": "people/fixture-ada", "etag": "fixture-2", "names": [{ "displayName": "Ada Lovelace" }], "emailAddresses": [{ "value": "ada@example.test" }, { "value": "a.lovelace@example.test", "type": "work" }], "biographies": [{ "value": "Historical revision" }] }
+  ],
+  "groups": [{ "resourceName": "contactGroups/fixture", "name": "Computing pioneers", "groupType": "USER_CONTACT_GROUP" }],
+  "next_sync_token": "fixture-cursor-2"
+}
