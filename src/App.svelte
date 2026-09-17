@@ -1,5 +1,35 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import brandLogo from './assets/contact-history.png';
+  import { version as appVersion } from '../package.json';
+  import { readPreferences, savePreferences, applyPreferences, type Preferences } from './lib/preferences';
+  let preferences = $state(readPreferences());
+  let preferenceNotice = $state('Changes save automatically');
+  let settingsTab = $state<'preferences' | 'about'>('preferences');
+  let scheduleBusy = $state(false);
+  let scheduleReady = $state(false);
+  let settingsError = $state('');
+  const colorScheme = matchMedia('(prefers-color-scheme: dark)');
+  function syncSystemTheme() { applyPreferences(preferences); }
+  function updatePreferences(patch: Partial<Preferences>) {
+    preferences = { ...preferences, ...patch };
+    preferenceNotice = savePreferences(preferences) ? 'Changes saved' : 'Applied for this session; storage is unavailable';
+  }
+  // Keep keyboard focus inside open dialogs and restore it to their trigger.
+  function focusDialog(node: HTMLElement) {
+    const previous = document.activeElement as HTMLElement | null;
+    const focusable = () => [...node.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex="0"]')].filter(el => el.getClientRects().length);
+    queueMicrotask(() => focusable()[0]?.focus());
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    node.addEventListener('keydown', trap);
+    return { destroy() { node.removeEventListener('keydown', trap); previous?.focus(); } };
+  }
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import type { UnlistenFn } from '@tauri-apps/api/event';
   import { save, open } from '@tauri-apps/plugin-dialog';
@@ -48,6 +78,13 @@
   let capture: Capture | undefined = $state();
   let groups: GroupRow[] = $state([]);
   let selectedGroup: string | null = $state(null);
+  let allSnapshotContacts: Contact[] = $state([]);
+  let avatarMap: Record<string, string> = $state({});
+  let mediaCache = new Map<string, MediaView[]>();
+  let searchInputEl: HTMLInputElement | null = $state(null);
+  let searchDropdownEl: HTMLDivElement | null = $state(null);
+  let searchDropdownOpen = $state(false);
+  let searchActiveIndex = $state(0);
   let contacts: Contact[] = $state([]);
   let detail: Contact | undefined = $state();
   let media: MediaView[] = $state([]);
@@ -64,9 +101,11 @@
   let busy = $state(false);
   let error = $state('');
   let offset = $state(0);
+  let contactsRequest = 0;
   let isMaximized = $state(false);
   let showColCustomizer = $state(false);
   let showSnapshotDropdown = $state(false);
+  let showAccountMenu = $state(false);
   let showSettingsModal = $state(false);
   let showRawDataModal = $state(false);
   let compareBaseSeq: number | null = $state(null);
@@ -121,6 +160,34 @@
     return 'Unknown';
   }
 
+  const GOOGLE_AVATAR_COLORS = [
+    '#1a73e8', // Blue
+    '#d93025', // Red
+    '#e37400', // Orange
+    '#0f9d58', // Green
+    '#9334e6', // Purple
+    '#0097a7', // Teal
+    '#0f9d58', // Green (matching NX Cash Back N)
+    '#e91e63', // Pink
+    '#5c6bc0', // Indigo
+    '#00897b', // Dark Teal
+    '#689f38', // Light Green
+    '#8e24aa', // Deep Purple
+  ];
+
+  function getAvatarColor(name: string): string {
+    if (!name) return GOOGLE_AVATAR_COLORS[0];
+    const char = name.trim().charAt(0).toUpperCase();
+    const code = char.charCodeAt(0);
+    return GOOGLE_AVATAR_COLORS[code % GOOGLE_AVATAR_COLORS.length];
+  }
+
+  function getAvatarInitial(name: string): string {
+    const trimmed = name.trim();
+    if (!trimmed) return '?';
+    return trimmed.charAt(0).toUpperCase();
+  }
+
   function getInitials(name: string): string {
     const parts = name.trim().split(/[\s@._-]+/).filter(Boolean);
     if (!parts.length) return '?';
@@ -132,11 +199,11 @@
     const photos = (payload.photos as Array<any>) || [];
     if (!photos.length) return '';
 
-    // Priority 1: User explicitly set contact photo (source.type === 'CONTACT')
+    // Priority 1: User explicitly set contact photo (source.type === 'CONTACT' or url has /contacts/)
     const contactPhoto = photos.find((p) => {
       if (!p || p.default || !p.url) return false;
       const sourceType = p.metadata?.source?.type || p.source?.type;
-      return sourceType === 'CONTACT';
+      return sourceType === 'CONTACT' || p.url.includes('/contacts/');
     });
     if (contactPhoto?.url) return contactPhoto.url;
 
@@ -144,7 +211,13 @@
     const primaryNonProfile = photos.find((p) => {
       if (!p || p.default || !p.url) return false;
       const sourceType = p.metadata?.source?.type || p.source?.type;
-      return (p.metadata?.primary || p.primary) && sourceType !== 'PROFILE' && sourceType !== 'DOMAIN_PROFILE';
+      return (
+        (p.metadata?.primary || p.primary) &&
+        sourceType !== 'PROFILE' &&
+        sourceType !== 'DOMAIN_PROFILE' &&
+        !p.url.includes('/a/') &&
+        !p.url.includes('/a-/')
+      );
     });
     if (primaryNonProfile?.url) return primaryNonProfile.url;
 
@@ -152,11 +225,16 @@
     const nonProfile = photos.find((p) => {
       if (!p || p.default || !p.url) return false;
       const sourceType = p.metadata?.source?.type || p.source?.type;
-      return sourceType !== 'PROFILE' && sourceType !== 'DOMAIN_PROFILE';
+      return (
+        sourceType !== 'PROFILE' &&
+        sourceType !== 'DOMAIN_PROFILE' &&
+        !p.url.includes('/a/') &&
+        !p.url.includes('/a-/')
+      );
     });
     if (nonProfile?.url) return nonProfile.url;
 
-    // Priority 4: Any non-default photo
+    // Priority 4: Fall back to Google profile photo
     const anyNonDefault = photos.find((p) => p && !p.default && p.url);
     if (anyNonDefault?.url) return anyNonDefault.url;
 
@@ -166,13 +244,173 @@
   function getAvatarSource(c: Contact, mediaList: MediaView[] = []): string {
     const preferredUrl = getPhotoUrl(c.payload);
     if (preferredUrl) {
+      if (avatarMap[preferredUrl]) return avatarMap[preferredUrl];
       const match = mediaList.find((m) => m.source_url === preferredUrl && m.data_url);
       if (match?.data_url) return match.data_url;
       return preferredUrl;
     }
+
+    const localAvatar = avatarMap[c.resource_name];
+    if (localAvatar) return localAvatar;
+
     const firstMedia = mediaList.find((m) => m.data_url);
     if (firstMedia?.data_url) return firstMedia.data_url;
     return '';
+  }
+
+  // Blazing Fast Typo-Tolerant Search Engine
+  function normalizeSearchText(str: string): string {
+    return str
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  }
+
+  function levenshtein(a: string, b: string): number {
+    if (a === b) return 0;
+    const la = a.length;
+    const lb = b.length;
+    if (Math.abs(la - lb) > 2) return 99;
+    if (la === 0) return lb;
+    if (lb === 0) return la;
+
+    const v0 = new Int32Array(lb + 1);
+    const v1 = new Int32Array(lb + 1);
+
+    for (let i = 0; i <= lb; i++) v0[i] = i;
+
+    for (let i = 0; i < la; i++) {
+      v1[0] = i + 1;
+      for (let j = 0; j < lb; j++) {
+        const cost = a[i] === b[j] ? 0 : 1;
+        v1[j + 1] = Math.min(v1[j] + 1, v0[j + 1] + 1, v0[j] + cost);
+      }
+      for (let j = 0; j <= lb; j++) v0[j] = v1[j];
+    }
+    return v1[lb];
+  }
+
+  function matchesToken(
+    token: string,
+    searchWords: string[],
+    fullSearchText: string,
+    digitQuery: string,
+    fullDigits: string
+  ): boolean {
+    if (fullSearchText.includes(token)) return true;
+    if (digitQuery && digitQuery.length >= 2 && fullDigits.includes(digitQuery)) return true;
+    if (searchWords.some((w) => w.startsWith(token))) return true;
+    if (token.length >= 3) {
+      if (searchWords.some((w) => Math.abs(w.length - token.length) <= 1 && levenshtein(token, w) <= 1)) {
+        return true;
+      }
+    }
+    if (token.length >= 6) {
+      if (searchWords.some((w) => Math.abs(w.length - token.length) <= 2 && levenshtein(token, w) <= 2)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function matchesContact(c: Contact, queryTokens: string[], digitTokens: string[]): boolean {
+    if (!queryTokens.length) return true;
+    const name = getDisplayName(c);
+    const nick = getNickname(c.payload);
+    const emails = getAllEmails(c.payload).map((e) => e.value).join(' ');
+    const phones = getAllPhones(c.payload).map((p) => p.value).join(' ');
+    const org = getOrganization(c.payload);
+    const addr = getPrimaryAddress(c.payload);
+    const notes = getNotes(c.payload);
+    const labels = getContactLabels(c.payload).join(' ');
+
+    const rawCombined = `${name} ${nick} ${emails} ${phones} ${org.org} ${org.title} ${addr} ${notes} ${labels}`;
+    const normalized = normalizeSearchText(rawCombined);
+    const words = normalized.split(/[\s@._\-/,+]+/).filter(Boolean);
+    const fullDigits = phones.replace(/\D/g, '');
+
+    for (let i = 0; i < queryTokens.length; i++) {
+      const token = queryTokens[i];
+      const digitToken = digitTokens[i];
+      if (!matchesToken(token, words, normalized, digitToken, fullDigits)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const searchResults = $derived.by(() => {
+    const query = search.trim();
+    if (!query) return [];
+
+    const normQuery = normalizeSearchText(query);
+    const queryTokens = normQuery.split(/\s+/).filter(Boolean);
+    const digitTokens = queryTokens.map((t) => t.replace(/\D/g, ''));
+
+    const matches: Array<{ contact: Contact; score: number }> = [];
+
+    for (const contact of allSnapshotContacts) {
+      if (!matchesContact(contact, queryTokens, digitTokens)) continue;
+
+      const name = normalizeSearchText(getDisplayName(contact));
+      const email = normalizeSearchText(getPrimaryEmail(contact.payload));
+      const nick = normalizeSearchText(getNickname(contact.payload));
+
+      let score = 0;
+      // 1. Name starts with full query
+      if (name.startsWith(normQuery)) {
+        score += 1000;
+      }
+      // 2. Email starts with query
+      if (email.startsWith(normQuery)) {
+        score += 800;
+      }
+      // 3. Word in name starts with query
+      const nameWords = name.split(/[\s@._\-/,+]+/).filter(Boolean);
+      if (nameWords.some((w) => w.startsWith(normQuery))) {
+        score += 600;
+      }
+      // 4. Nickname starts with query
+      if (nick && nick.startsWith(normQuery)) {
+        score += 500;
+      }
+      // 5. Name contains query
+      if (name.includes(normQuery)) {
+        score += 300;
+      }
+      // 6. Email contains query
+      if (email.includes(normQuery)) {
+        score += 200;
+      }
+      // 7. Starred bonus
+      if (isFavourite(contact)) {
+        score += 50;
+      }
+
+      matches.push({ contact, score });
+    }
+
+    matches.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return getDisplayName(a.contact).localeCompare(getDisplayName(b.contact));
+    });
+
+    return matches.slice(0, 10).map((m) => m.contact);
+  });
+
+  function updateDisplayedContacts() {
+    let filtered = allSnapshotContacts;
+
+    // Label filter only: search does not filter existing list while typing
+    if (selectedGroup) {
+      const chosenName = groups.find((group) => group.resource_name === selectedGroup)?.name.trim().toLocaleLowerCase();
+      const matchingGroups = new Set(groups.filter((group) => group.name.trim().toLocaleLowerCase() === chosenName).map((group) => group.resource_name));
+      filtered = filtered.filter((contact) => ((contact.payload.memberships as Array<any>) || []).some((membership) =>
+        matchingGroups.has(membership?.contactGroupMembership?.contactGroupResourceName)));
+    }
+
+    contacts = filtered;
   }
 
   async function copyFieldValue(key: string, text: string) {
@@ -478,31 +716,155 @@
     }
   }
 
+  function isSystemGroup(resName: string, name: string): boolean {
+    const res = (resName || '').toLowerCase();
+    if (
+      res.endsWith('/mycontacts') ||
+      res.endsWith('/starred') ||
+      res.endsWith('/all') ||
+      res.endsWith('/blocked') ||
+      res.endsWith('/chatbuddies') ||
+      res.endsWith('/coworkers') ||
+      res.endsWith('/family') ||
+      res.endsWith('/friends')
+    ) {
+      return true;
+    }
+    const norm = (name || '').trim().toLowerCase().replace(/[-_\s]/g, '');
+    const sysNames = new Set([
+      'mycontacts',
+      'starred',
+      'all',
+      'allcontacts',
+      'blocked',
+      'chatbuddies',
+      'chatcontacts',
+      'coworkers',
+      'family',
+      'familyandfriends',
+      'friends',
+    ]);
+    return sysNames.has(norm);
+  }
+
   async function refreshGroups() {
     if (!selected || !capture) {
       groups = [];
       return;
     }
     try {
-      groups = await api.groups(selected.id, capture.sequence);
+      const fetched = await api.groups(selected.id, capture.sequence);
+      groups = fetched.filter((g) => !isSystemGroup(g.resource_name, g.name));
     } catch (e) {
       groups = [];
     }
   }
 
   async function refreshContacts() {
+    const request = ++contactsRequest;
     if (!selected || !capture) {
+      allSnapshotContacts = [];
+      avatarMap = {};
       contacts = [];
       return;
     }
     try {
-      contacts = await api.contacts(selected.id, capture.sequence, search.trim(), selectedGroup, offset);
+      const [nextContacts, nextAvatars] = await Promise.all([
+        api.contacts(selected.id, capture.sequence, '', null, 0),
+        api.avatars(selected.id, capture.sequence).catch(() => ({} as Record<string, string>)),
+      ]);
+      if (request !== contactsRequest) return;
+      allSnapshotContacts = nextContacts;
+      avatarMap = nextAvatars;
+      updateDisplayedContacts();
     } catch (e) {
+      if (request !== contactsRequest) return;
       error = String(e);
+      allSnapshotContacts = [];
       contacts = [];
     }
     detail = undefined;
     media = [];
+  }
+
+  function onSearchInput() {
+    searchDropdownOpen = search.trim().length > 0;
+    searchActiveIndex = 0;
+  }
+
+  function onSearchFocus() {
+    if (search.trim().length > 0) {
+      searchDropdownOpen = true;
+      searchActiveIndex = 0;
+    }
+  }
+
+  function clearSearch() {
+    search = '';
+    searchDropdownOpen = false;
+    searchActiveIndex = 0;
+    searchInputEl?.focus();
+  }
+
+  function selectSearchResult(contact: Contact) {
+    searchDropdownOpen = false;
+    selectContact(contact);
+    if (pageView !== 'contacts') {
+      navigate('contacts');
+    }
+  }
+
+  function scrollActiveSearchResultIntoView() {
+    if (!searchDropdownEl) return;
+    const activeEl = searchDropdownEl.querySelector('.search-result-item.active') as HTMLElement | null;
+    if (activeEl) {
+      activeEl.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function onSearchKeyDown(event: KeyboardEvent) {
+    if (!searchDropdownOpen && search.trim().length > 0 && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      searchDropdownOpen = true;
+      searchActiveIndex = 0;
+      event.preventDefault();
+      return;
+    }
+
+    if (!searchDropdownOpen || searchResults.length === 0) {
+      if (event.key === 'Escape') {
+        clearSearch();
+      }
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      searchActiveIndex = (searchActiveIndex + 1) % searchResults.length;
+      setTimeout(scrollActiveSearchResultIntoView, 0);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      searchActiveIndex = (searchActiveIndex - 1 + searchResults.length) % searchResults.length;
+      setTimeout(scrollActiveSearchResultIntoView, 0);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      if (searchActiveIndex >= 0 && searchActiveIndex < searchResults.length) {
+        selectSearchResult(searchResults[searchActiveIndex]);
+      }
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      searchDropdownOpen = false;
+    }
+  }
+
+  function handleWindowClick(e: MouseEvent) {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    if (!target.closest('.topbar-search-container')) {
+      searchDropdownOpen = false;
+    }
+    if (!target.closest('.account-avatar-btn') && !target.closest('.account-menu')) {
+      showAccountMenu = false;
+    }
   }
 
   async function refreshChanges() {
@@ -549,26 +911,32 @@
 
   async function selectContact(contact: Contact) {
     detail = contact;
-    media = [];
+    media = mediaCache.get(contact.resource_name) || [];
     if (selected && capture) {
       try {
-        media = await api.media(selected.id, capture.sequence, contact.resource_name);
+        const loadedMedia = await api.media(selected.id, capture.sequence, contact.resource_name);
+        mediaCache.set(contact.resource_name, loadedMedia);
+        if (detail?.resource_name === contact.resource_name) {
+          media = loadedMedia;
+        }
       } catch (e) {
         // non-blocking
       }
     }
   }
 
-  async function selectLabelFilter(groupResourceName: string | null) {
+  function selectLabelFilter(groupResourceName: string | null) {
     selectedGroup = groupResourceName;
+    if (window.innerWidth < 1000) sidebarCollapsed = true;
     offset = 0;
     detail = undefined;
-    await refreshContacts();
+    updateDisplayedContacts();
   }
 
   async function changeCapture(sequence: number) {
     capture = captures.find((c) => c.sequence === sequence);
     offset = 0;
+    selectedGroup = null;
     showSnapshotDropdown = false;
     await refreshGroups();
     await refreshContacts();
@@ -732,13 +1100,16 @@
 
   // Settings Actions
   async function toggleSchedule() {
+    if (scheduleBusy || !scheduleReady) return;
+    scheduleBusy = true;
+    settingsError = '';
     try {
       if (scheduled) await api.disableSchedule();
       else await api.enableSchedule();
       scheduled = await api.scheduleState();
     } catch (e) {
-      error = String(e);
-    }
+      settingsError = String(e);
+    } finally { scheduleBusy = false; }
   }
 
   async function exportSelected(format: 'csv' | 'vcf') {
@@ -785,11 +1156,13 @@
 
   async function disconnectSelected() {
     if (!selected) return;
+    settingsError = '';
     try {
       await api.disconnect(selected.id);
       await refreshAccounts();
     } catch (e) {
       error = String(e);
+      settingsError = String(e);
     }
   }
 
@@ -810,7 +1183,42 @@
 
   let unlistenProgress: UnlistenFn | undefined;
 
+  function handleGlobalKeyDown(event: KeyboardEvent) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      searchInputEl?.focus();
+      searchInputEl?.select();
+      if (search.trim().length > 0) {
+        searchDropdownOpen = true;
+      }
+      return;
+    }
+    if (event.key === '/' && !['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName)) {
+      event.preventDefault();
+      searchInputEl?.focus();
+      searchInputEl?.select();
+      if (search.trim().length > 0) {
+        searchDropdownOpen = true;
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      showSnapshotDropdown = false;
+      if (searchDropdownOpen) {
+        searchDropdownOpen = false;
+        return;
+      }
+      if (document.activeElement === searchInputEl || search) {
+        clearSearch();
+      }
+    }
+  }
+
   onMount(async () => {
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('click', handleWindowClick);
+    colorScheme.addEventListener('change', syncSystemTheme);
+    api.scheduleState().then(value => { scheduled = value; scheduleReady = true; }).catch(e => { settingsError = 'Could not load the capture schedule: ' + String(e); });
     // Load persisted column settings
     try {
       const savedCols = localStorage.getItem('contacts_active_cols');
@@ -838,6 +1246,9 @@
 
   onDestroy(() => {
     unlistenProgress?.();
+    window.removeEventListener('keydown', handleGlobalKeyDown);
+    window.removeEventListener('click', handleWindowClick);
+    colorScheme.removeEventListener('change', syncSystemTheme);
   });
 </script>
 
@@ -857,31 +1268,89 @@
       </button>
       <button
         class="app-brand"
+        aria-label="Contact History home"
         style="background: none; border: none; padding: 0; text-align: left;"
         onclick={() => { selectLabelFilter(null); navigate('contacts'); }}
       >
-        <div class="brand-icon-circle">
-          <span class="material-symbols-outlined icon-filled">person</span>
-        </div>
-        <span class="app-title">Contacts</span>
+        <img class="brand-logo" src={brandLogo} alt="" />
+        <span class="app-title">Contact History</span>
       </button>
     </div>
 
     <!-- Draggable area around search -->
     <div class="topbar-drag-area" data-tauri-drag-region>
-      <div class="topbar-search" data-tauri-drag-region="false">
-        <span class="material-symbols-outlined search-icon">search</span>
-        <input
-          type="text"
-          class="search-input"
-          placeholder="Search"
-          bind:value={search}
-          oninput={() => { offset = 0; refreshContacts(); }}
-        />
-        {#if search}
-          <button class="search-clear-btn" onclick={() => { search = ''; offset = 0; refreshContacts(); }}>
-            <span class="material-symbols-outlined">close</span>
-          </button>
+      <div class="topbar-search-container {searchDropdownOpen && search.trim() ? 'has-dropdown' : ''}" data-tauri-drag-region="false">
+        <div class="topbar-search {searchDropdownOpen && search.trim() ? 'dropdown-open' : ''}">
+          <span class="material-symbols-outlined search-icon">search</span>
+          <input
+            type="text"
+            class="search-input"
+            placeholder="Search contacts (Ctrl+K)"
+            aria-label="Search contacts"
+            bind:this={searchInputEl}
+            bind:value={search}
+            oninput={onSearchInput}
+            onfocus={onSearchFocus}
+            onclick={onSearchFocus}
+            onkeydown={onSearchKeyDown}
+          />
+          {#if !search}
+            <span class="search-shortcut-badge" title="Press Ctrl+K to search">Ctrl K</span>
+          {:else}
+            <button class="search-clear-btn" aria-label="Clear search" onclick={clearSearch}>
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          {/if}
+        </div>
+
+        {#if searchDropdownOpen && search.trim()}
+          <div class="search-dropdown-menu" bind:this={searchDropdownEl} role="listbox" data-tauri-drag-region="false">
+            {#if searchResults.length > 0}
+              {#each searchResults as contact, idx (contact.resource_name)}
+                <button
+                  type="button"
+                  class="search-result-item {idx === searchActiveIndex ? 'active' : ''}"
+                  role="option"
+                  aria-selected={idx === searchActiveIndex}
+                  onclick={() => selectSearchResult(contact)}
+                  onmouseenter={() => searchActiveIndex = idx}
+                  data-tauri-drag-region="false"
+                >
+                  <div class="search-avatar-circle" style="background-color: {getAvatarColor(getDisplayName(contact))};">
+                    {#if getAvatarSource(contact)}
+                      <img
+                        src={getAvatarSource(contact)}
+                        alt={getDisplayName(contact)}
+                        class="search-avatar-img"
+                        loading="lazy"
+                        referrerpolicy="no-referrer"
+                        onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                      />
+                    {/if}
+                    <span class="search-avatar-text">{getAvatarInitial(getDisplayName(contact))}</span>
+                  </div>
+                  <div class="search-result-info">
+                    <span class="search-result-name">{getDisplayName(contact)}</span>
+                    {#if getPrimaryEmail(contact.payload)}
+                      <span class="search-result-sep">&mdash;</span>
+                      <span class="search-result-email">{getPrimaryEmail(contact.payload)}</span>
+                    {:else if getPrimaryPhone(contact.payload)}
+                      <span class="search-result-sep">&mdash;</span>
+                      <span class="search-result-phone">{getPrimaryPhone(contact.payload)}</span>
+                    {/if}
+                  </div>
+                </button>
+              {/each}
+            {:else}
+              <div class="search-empty-state">
+                <span class="material-symbols-outlined search-empty-icon">search_off</span>
+                <span>No contacts matching "{search.trim()}"</span>
+              </div>
+            {/if}
+            <div class="search-dropdown-footer">
+              <span>Use <kbd>&uarr;</kbd> <kbd>&darr;</kbd> to navigate, <kbd>&crarr;</kbd> to select, <kbd>Esc</kbd> to dismiss</span>
+            </div>
+          </div>
         {/if}
       </div>
     </div>
@@ -903,8 +1372,10 @@
       {#if selected}
         <button
           class="account-avatar-btn"
+          aria-expanded={showAccountMenu}
+          aria-haspopup="true"
           title={accountProfile?.name ? `${accountProfile.name} (${selected.email})` : selected.email}
-          onclick={() => showSettingsModal = true}
+          onclick={() => { showAccountMenu = !showAccountMenu; showSnapshotDropdown = false; }}
         >
           {#if accountProfile?.picture}
             <img
@@ -933,6 +1404,76 @@
       </div>
     </div>
   </header>
+
+  <!-- Account Popover Menu -->
+  {#if showAccountMenu}
+    <div
+      class="menu-scrim"
+      style="position: fixed; inset: 0; z-index: 101; background: transparent;"
+      onclick={() => showAccountMenu = false}
+      onkeydown={(e) => { if (e.key === 'Escape') showAccountMenu = false; }}
+      role="presentation"
+      tabindex="-1"
+    ></div>
+    <div
+      class="popover account-menu"
+      role="menu"
+      aria-label="Google accounts"
+      tabindex="-1"
+      onkeydown={(e) => { if (e.key === 'Escape') showAccountMenu = false; }}
+    >
+      <div class="account-menu-heading">Google accounts</div>
+      {#each accounts as acc}
+        <button
+          type="button"
+          class="account-menu-item"
+          class:selected={selected?.id === acc.id}
+          role="menuitem"
+          onclick={() => { selectAccount(acc); showAccountMenu = false; }}
+          title={acc.email}
+        >
+          <div class="account-menu-avatar">
+            {#if selected?.id === acc.id && accountProfile?.picture}
+              <img
+                src={accountProfile.picture}
+                alt=""
+                referrerpolicy="no-referrer"
+                onerror={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+              />
+            {:else}
+              <span>{getInitials(acc.email)}</span>
+            {/if}
+          </div>
+          <div class="account-menu-copy">
+            <strong>{selected?.id === acc.id && accountProfile?.name ? accountProfile.name : acc.email}</strong>
+            <small>{acc.email}</small>
+          </div>
+          {#if selected?.id === acc.id}
+            <span class="material-symbols-outlined account-check" aria-label="Active account">check</span>
+          {/if}
+        </button>
+      {/each}
+      <div class="menu-divider"></div>
+      <button
+        type="button"
+        class="account-menu-action"
+        role="menuitem"
+        onclick={() => { showAccountMenu = false; navigate('onboarding'); }}
+      >
+        <span class="material-symbols-outlined">person_add</span>
+        <span>Add another Google account</span>
+      </button>
+      <button
+        type="button"
+        class="account-menu-action"
+        role="menuitem"
+        onclick={() => { showAccountMenu = false; showSettingsModal = true; }}
+      >
+        <span class="material-symbols-outlined">settings</span>
+        <span>Settings & preferences</span>
+      </button>
+    </div>
+  {/if}
 
   <!-- Capture in Progress Banner with Cancel -->
   {#if captureProgress}
@@ -1057,25 +1598,6 @@
         {/if}
       </div>
 
-      <!-- Accounts Section -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-header">Accounts</div>
-        {#each accounts as acc}
-          <button
-            class="nav-item"
-            class:active={selected?.id === acc.id}
-            onclick={() => selectAccount(acc)}
-            title={acc.email}
-          >
-            <span class="material-symbols-outlined nav-icon">mail</span>
-            <span class="nav-label">{acc.email}</span>
-          </button>
-        {/each}
-        <button class="nav-item" onclick={() => navigate('onboarding')}>
-          <span class="material-symbols-outlined nav-icon">add</span>
-          <span class="nav-label">Add Google account</span>
-        </button>
-      </div>
     </aside>
 
     <!-- Main View Workspace -->
@@ -1092,21 +1614,15 @@
               <div class="detail-nav-actions">
                 {#if isFavourite(detail)}
                   <span class="star-indicator" title="Starred contact" style="margin-right: 4px;">
-                    <span class="material-symbols-outlined icon-filled" style="color: #f9ab00; font-size: 22px;">star</span>
+                    <span class="material-symbols-outlined icon-filled" style="color: var(--favorite); font-size: 22px;">star</span>
                   </span>
                 {/if}
                 <button class="edit-btn" title="Snapshot version">
                   <span class="material-symbols-outlined" style="font-size: 16px;">history</span>
                   <span>Version #{detail.version}</span>
                 </button>
-                <button class="icon-btn" onclick={() => showRawDataModal = true} title="View full contact data">
+                <button class="icon-btn" onclick={() => showRawDataModal = true} title="View raw contact data">
                   <span class="material-symbols-outlined">data_object</span>
-                </button>
-                <button class="icon-btn" onclick={() => downloadContactJson(detail!)} title="Download contact JSON">
-                  <span class="material-symbols-outlined">download</span>
-                </button>
-                <button class="icon-btn" onclick={() => downloadContactVcf(detail!)} title="Download vCard">
-                  <span class="material-symbols-outlined">contact_page</span>
                 </button>
               </div>
             </div>
@@ -1118,11 +1634,12 @@
                   <img
                     src={getAvatarSource(detail, media)}
                     alt={getDisplayName(detail)}
-                    onerror={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                    referrerpolicy="no-referrer"
+                    onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                    onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
                   />
-                {:else}
-                  <span>{getInitials(getDisplayName(detail))}</span>
                 {/if}
+                <span>{getInitials(getDisplayName(detail))}</span>
               </div>
               <div class="hero-info">
                 <h1 class="hero-name">{getDisplayName(detail)}</h1>
@@ -1132,65 +1649,47 @@
               </div>
             </div>
 
-            <!-- Action Circles Row (All Interactive and Functional) -->
-            <div class="hero-action-buttons">
-              {#if getPrimaryEmail(detail.payload)}
-                <div class="action-circle-group">
-                  <a
-                    href="mailto:{getPrimaryEmail(detail.payload)}"
-                    class="action-circle-btn"
-                    title="Send email to {getPrimaryEmail(detail.payload)}"
-                  >
-                    <span class="material-symbols-outlined">mail</span>
-                  </a>
-                  <span class="action-circle-label">Email</span>
-                </div>
-              {/if}
-              {#if getPrimaryPhone(detail.payload)}
-                <div class="action-circle-group">
-                  <a
-                    href="tel:{getPrimaryPhone(detail.payload)}"
-                    class="action-circle-btn"
-                    title="Call {getPrimaryPhone(detail.payload)}"
-                  >
-                    <span class="material-symbols-outlined">call</span>
-                  </a>
-                  <span class="action-circle-label">Call</span>
-                </div>
-              {/if}
-              {#if getPrimaryAddress(detail.payload)}
-                <div class="action-circle-group">
-                  <button
-                    class="action-circle-btn"
-                    title="Open address in Google Maps"
-                    onclick={() => api.openExternalUrl(`https://maps.google.com/?q=${encodeURIComponent(getPrimaryAddress(detail!.payload))}`)}
-                  >
-                    <span class="material-symbols-outlined">location_on</span>
-                  </button>
-                  <span class="action-circle-label">Maps</span>
-                </div>
-              {/if}
-              <div class="action-circle-group">
-                <button
-                  class="action-circle-btn"
-                  title="Download contact JSON"
-                  onclick={() => downloadContactJson(detail!)}
-                >
-                  <span class="material-symbols-outlined">download</span>
-                </button>
-                <span class="action-circle-label">Download</span>
+            <!-- Action Circles Row (Communication Actions) -->
+            {#if getPrimaryEmail(detail.payload) || getPrimaryPhone(detail.payload) || getPrimaryAddress(detail.payload)}
+              <div class="hero-action-buttons">
+                {#if getPrimaryEmail(detail.payload)}
+                  <div class="action-circle-group">
+                    <a
+                      href="mailto:{getPrimaryEmail(detail.payload)}"
+                      class="action-circle-btn"
+                      title="Send email to {getPrimaryEmail(detail.payload)}"
+                    >
+                      <span class="material-symbols-outlined">mail</span>
+                    </a>
+                    <span class="action-circle-label">Email</span>
+                  </div>
+                {/if}
+                {#if getPrimaryPhone(detail.payload)}
+                  <div class="action-circle-group">
+                    <a
+                      href="tel:{getPrimaryPhone(detail.payload)}"
+                      class="action-circle-btn"
+                      title="Call {getPrimaryPhone(detail.payload)}"
+                    >
+                      <span class="material-symbols-outlined">call</span>
+                    </a>
+                    <span class="action-circle-label">Call</span>
+                  </div>
+                {/if}
+                {#if getPrimaryAddress(detail.payload)}
+                  <div class="action-circle-group">
+                    <button
+                      class="action-circle-btn"
+                      title="Open address in Google Maps"
+                      onclick={() => api.openExternalUrl(`https://maps.google.com/?q=${encodeURIComponent(getPrimaryAddress(detail!.payload))}`)}
+                    >
+                      <span class="material-symbols-outlined">location_on</span>
+                    </button>
+                    <span class="action-circle-label">Maps</span>
+                  </div>
+                {/if}
               </div>
-              <div class="action-circle-group">
-                <button
-                  class="action-circle-btn"
-                  title="View complete raw data"
-                  onclick={() => showRawDataModal = true}
-                >
-                  <span class="material-symbols-outlined">code</span>
-                </button>
-                <span class="action-circle-label">Raw Data</span>
-              </div>
-            </div>
+            {/if}
 
             <!-- Label Membership Chips Row -->
             {#if getContactLabels(detail.payload).length > 0}
@@ -1433,23 +1932,25 @@
                       </div>
                     </td>
                   </tr>
-                  {#each favouriteContacts as contact}
+                  {#each favouriteContacts as contact (contact.resource_name)}
                     <tr class="contact-row" onclick={() => selectContact(contact)}>
                       {#each activeColKeys as colKey}
                         {#if colKey === 'name'}
                           <td>
                             <div class="name-cell-content">
                               <span class="star-indicator" title="Starred contact">
-                                <span class="material-symbols-outlined icon-filled" style="color: #f9ab00; font-size: 18px;">star</span>
+                                <span class="material-symbols-outlined icon-filled" style="color: var(--favorite); font-size: 18px;">star</span>
                               </span>
-                              <div class="avatar-circle">
-                                {#if getPhotoUrl(contact.payload)}
+                              <div class="avatar-circle" style="background-color: {getAvatarColor(getDisplayName(contact))}; color: #ffffff;">
+                                {#if getAvatarSource(contact)}
                                   <img
-                                    src={getPhotoUrl(contact.payload)}
+                                    src={getAvatarSource(contact)}
                                     alt={getDisplayName(contact)}
                                     class="avatar-img"
                                     loading="lazy"
-                                    onerror={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                                    referrerpolicy="no-referrer"
+                                    onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                                    onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
                                   />
                                 {/if}
                                 <span>{getInitials(getDisplayName(contact))}</span>
@@ -1491,20 +1992,22 @@
                       <span>Contacts ({otherContacts.length})</span>
                     </td>
                   </tr>
-                  {#each otherContacts as contact}
+                  {#each otherContacts as contact (contact.resource_name)}
                     <tr class="contact-row" onclick={() => selectContact(contact)}>
                       {#each activeColKeys as colKey}
                         {#if colKey === 'name'}
                           <td>
                             <div class="name-cell-content">
-                              <div class="avatar-circle">
-                                {#if getPhotoUrl(contact.payload)}
+                              <div class="avatar-circle" style="background-color: {getAvatarColor(getDisplayName(contact))}; color: #ffffff;">
+                                {#if getAvatarSource(contact)}
                                   <img
-                                    src={getPhotoUrl(contact.payload)}
+                                    src={getAvatarSource(contact)}
                                     alt={getDisplayName(contact)}
                                     class="avatar-img"
                                     loading="lazy"
-                                    onerror={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                                    referrerpolicy="no-referrer"
+                                    onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                                    onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
                                   />
                                 {/if}
                                 <span>{getInitials(getDisplayName(contact))}</span>
@@ -1544,15 +2047,20 @@
                   <tr>
                     <td colspan={activeColKeys.length}>
                       <div class="empty-state">
-                        <span class="material-symbols-outlined">people</span>
-                        <h3 class="empty-state-title">No contacts found</h3>
-                        <p class="empty-state-desc">
-                          {#if selectedGroup}
-                            There are no contacts in this label for the current snapshot.
-                          {:else}
-                            No contacts match your search or filter.
-                          {/if}
-                        </p>
+                        {#if search.trim()}
+                          <span class="material-symbols-outlined">search_off</span>
+                          <h3 class="empty-state-title">No matching contacts</h3>
+                          <p class="empty-state-desc">No contacts matching "{search.trim()}" were found.</p>
+                          <button class="action-btn" onclick={clearSearch} style="margin-top: 12px;">Clear search</button>
+                        {:else if selectedGroup}
+                          <span class="material-symbols-outlined">label_off</span>
+                          <h3 class="empty-state-title">No contacts in this label</h3>
+                          <p class="empty-state-desc">There are no contacts tagged with this label in snapshot #{capture?.sequence}.</p>
+                        {:else}
+                          <span class="material-symbols-outlined">people</span>
+                          <h3 class="empty-state-title">No contacts found</h3>
+                          <p class="empty-state-desc">No contacts available in this snapshot.</p>
+                        {/if}
                       </div>
                     </td>
                   </tr>
@@ -1748,6 +2256,8 @@
       onclick={(e) => { if (e.target === e.currentTarget) showColCustomizer = false; }}
       onkeydown={(e) => { if (e.key === 'Escape') showColCustomizer = false; }}
       role="dialog"
+      aria-modal="true"
+      use:focusDialog
       tabindex="-1"
     >
       <div class="modal-dialog" role="document">
@@ -1778,7 +2288,7 @@
                     <span style="font-weight: {colKey === 'name' ? '600' : '400'};">{colDef.label}</span>
                   </label>
                   {#if colKey === 'name'}
-                    <span style="font-size: 11px; color: var(--google-text-secondary); background: #e8f0fe; color: #1a73e8; padding: 2px 6px; border-radius: 4px;">Primary</span>
+                    <span style="font-size: 11px; color: var(--google-text-secondary); background: var(--google-blue-surface); color: var(--google-blue); padding: 2px 6px; border-radius: 4px;">Primary</span>
                   {/if}
                 </div>
                 <div class="col-actions">
@@ -1849,6 +2359,8 @@
       onclick={(e) => { if (e.target === e.currentTarget) showSnapshotDropdown = false; }}
       onkeydown={(e) => { if (e.key === 'Escape') showSnapshotDropdown = false; }}
       role="dialog"
+      aria-modal="true"
+      use:focusDialog
       tabindex="-1"
     >
       <div class="modal-dialog" role="document" style="max-width: 460px;">
@@ -1880,50 +2392,56 @@
     </div>
   {/if}
 
-  <!-- Settings Modal -->
+  <!-- Settings keeps personal preferences, account controls, and About together. -->
   {#if showSettingsModal}
-    <div
-      class="modal-overlay"
+    <div class="modal-overlay" use:focusDialog role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1"
       onclick={(e) => { if (e.target === e.currentTarget) showSettingsModal = false; }}
-      onkeydown={(e) => { if (e.key === 'Escape') showSettingsModal = false; }}
-      role="dialog"
-      tabindex="-1"
-    >
-      <div class="modal-dialog" role="document" style="max-width: 480px;">
+      onkeydown={(e) => { if (e.key === 'Escape') showSettingsModal = false; }}>
+      <div class="modal-dialog settings-dialog" role="document">
         <div class="modal-header">
-          <h2 class="modal-title">Settings</h2>
-          <button class="icon-btn" onclick={() => showSettingsModal = false}>
-            <span class="material-symbols-outlined">close</span>
-          </button>
+          <h2 class="modal-title" id="settings-title">Settings</h2>
+          <button class="icon-btn" aria-label="Close settings" onclick={() => showSettingsModal = false}><span class="material-symbols-outlined">close</span></button>
         </div>
+        <nav class="settings-tabs" aria-label="Settings sections">
+          <button aria-pressed={settingsTab === 'preferences'} onclick={() => settingsTab = 'preferences'}>Preferences</button>
+          <button aria-pressed={settingsTab === 'about'} onclick={() => settingsTab = 'about'}>About</button>
+        </nav>
         <div class="modal-body">
-          <div style="display: flex; flex-direction: column; gap: 20px;">
-            <div>
-              <h3 style="font-size: 14px; font-weight: 500; margin-bottom: 6px;">Daily Automated Capture</h3>
-              <p style="font-size: 12px; color: var(--google-text-secondary); margin-bottom: 12px;">
-                Automatically snapshot contacts in the background once every 24 hours.
-              </p>
-              <button class="btn-secondary" onclick={toggleSchedule}>
-                {scheduled ? 'Disable Schedule' : 'Enable Daily Schedule'}
-              </button>
-            </div>
-
-            <hr style="border: 0; border-top: 1px solid var(--google-border);" />
-
-            <div>
-              <h3 style="font-size: 14px; font-weight: 500; margin-bottom: 6px;">Active Account</h3>
-              <p style="font-size: 12px; color: var(--google-text-secondary); margin-bottom: 12px;">
-                {selected?.email || 'No account selected'}
-              </p>
-              <button class="btn-secondary" style="color: var(--google-danger);" onclick={disconnectSelected}>
-                Disconnect Account
-              </button>
-            </div>
-          </div>
+          {#if settingsTab === 'preferences'}
+            {#if settingsError}<p class="settings-error" role="alert">{settingsError}</p>{/if}
+            <section class="settings-section" aria-labelledby="appearance-title">
+              <h3 id="appearance-title">Appearance</h3>
+              <p>Choose a theme. System follows your device’s appearance automatically.</p>
+              <div class="theme-options" role="group" aria-label="Color theme">
+                {#each [{value: 'system', label: 'System', icon: 'desktop_windows'}, {value: 'light', label: 'Light', icon: 'light_mode'}, {value: 'dark', label: 'Dark', icon: 'dark_mode'}] as option}
+                  <button aria-pressed={preferences.theme === option.value} onclick={() => updatePreferences({theme: option.value as Preferences['theme']})}><span class="material-symbols-outlined" aria-hidden="true">{option.icon}</span>{option.label}</button>
+                {/each}
+              </div>
+              <label class="setting-row"><span>Contact density<small>Adjust the spacing between contact rows.</small></span>
+                <select value={preferences.density} onchange={(e) => updatePreferences({density: e.currentTarget.value as Preferences['density']})}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select>
+              </label>
+              <label class="setting-row"><span>Reduce motion<small>Minimize animations. Your device’s reduced-motion preference is always respected.</small></span><input type="checkbox" checked={preferences.reduceMotion} onchange={(e) => updatePreferences({reduceMotion: e.currentTarget.checked})} /></label>
+              <div class="settings-actions"><button class="btn-secondary" onclick={() => { showSettingsModal = false; showColCustomizer = true; }}>Customize contact columns</button></div>
+            </section>
+            <section class="settings-section" aria-labelledby="capture-settings-title">
+              <h3 id="capture-settings-title">Capture schedule</h3>
+              <label class="setting-row"><span>Background capture<small>Windows checks at 09:00 and at sign-in. A snapshot is captured when the last one is at least seven days old. Requires the installed release app.</small></span><input type="checkbox" checked={scheduled} disabled={scheduleBusy || !scheduleReady} onchange={(event) => { event.currentTarget.checked = scheduled; toggleSchedule(); }} /></label>
+            </section>
+            <section class="settings-section" aria-labelledby="account-settings-title">
+              <h3 id="account-settings-title">Active account</h3>
+              <p class="settings-account">{selected?.email || 'No account selected'}</p>
+              <button class="btn-secondary" style="color: var(--google-danger);" disabled={!selected || busy} onclick={disconnectSelected}>Disconnect account</button>
+            </section>
+          {:else}
+            <section class="settings-section about-copy" aria-labelledby="about-title">
+              <div class="about-brand"><img class="brand-logo" src={brandLogo} alt="" /><div><h3 id="about-title">Contact History</h3><p>Version {appVersion}</p></div></div>
+              <p>A local archive of your Google contacts, with snapshots that let you revisit details and see what changed over time.</p>
+              <p>Browse earlier snapshots, compare revisions, and export contacts or back up an account using the sidebar’s export and archive actions.</p>
+              <p>Contact archives are stored on this computer. Connecting and capturing contacts requires access to your Google account.</p>
+            </section>
+          {/if}
         </div>
-        <div class="modal-footer">
-          <button class="btn-primary" onclick={() => showSettingsModal = false}>Done</button>
-        </div>
+        <div class="modal-footer"><span class="settings-note" role="status">{settingsTab === 'preferences' ? preferenceNotice : 'Contact History · Local contact archiving'}</span><button class="btn-primary" onclick={() => showSettingsModal = false}>Done</button></div>
       </div>
     </div>
   {/if}
@@ -1934,6 +2452,8 @@
       onclick={(e) => { if (e.target === e.currentTarget) showRawDataModal = false; }}
       onkeydown={(e) => { if (e.key === 'Escape') showRawDataModal = false; }}
       role="dialog"
+      aria-modal="true"
+      use:focusDialog
       tabindex="-1"
     >
       <div class="modal-dialog" role="document" style="max-width: 680px; width: 90%;">
@@ -1946,7 +2466,7 @@
             <span class="material-symbols-outlined">close</span>
           </button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="user-select: text; -webkit-user-select: text;">
           <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
             <button class="btn-secondary" onclick={() => copyFieldValue('modal-raw', JSON.stringify(detail?.payload, null, 2))}>
               <span class="material-symbols-outlined" style="font-size: 16px;">content_copy</span>
@@ -1961,7 +2481,7 @@
               <span>Download vCard</span>
             </button>
           </div>
-          <pre class="diff-pre" style="max-height: 420px; font-size: 12px; background: var(--google-surface);">{JSON.stringify(detail.payload, null, 2)}</pre>
+          <pre class="diff-pre raw-data-pre" style="max-height: 420px; font-size: 12px; background: var(--google-surface); user-select: text; -webkit-user-select: text; cursor: text;">{JSON.stringify(detail.payload, null, 2)}</pre>
         </div>
         <div class="modal-footer">
           <button class="btn-primary" onclick={() => showRawDataModal = false}>Close</button>

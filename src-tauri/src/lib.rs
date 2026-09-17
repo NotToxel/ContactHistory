@@ -102,7 +102,7 @@ fn list_groups(account_id: String, sequence: i64) -> Result<Vec<capture::GroupRo
     error(capture::groups(&store, &account, sequence))
 }
 #[tauri::command]
-fn list_contacts(
+async fn list_contacts(
     account_id: String,
     sequence: i64,
     search: String,
@@ -112,16 +112,41 @@ fn list_contacts(
     if search.len() > 200 {
         return Err("search is too long".into());
     }
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<capture::ContactRow>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::contacts(
+            &store,
+            &account,
+            sequence,
+            &search,
+            group.as_deref(),
+            offset,
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_avatars(
+    account_id: String,
+    sequence: i64,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<std::collections::HashMap<String, String>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(media::avatars_for_capture(&store, &account, sequence))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn contact_history(account_id: String, resource_name: String) -> Result<Vec<capture::ContactHistoryEntry>, String> {
     let store = store()?;
     let account = error(store.account(&account_id))?;
-    error(capture::contacts(
-        &store,
-        &account,
-        sequence,
-        &search,
-        group.as_deref(),
-        offset,
-    ))
+    error(capture::contact_history(&store, &account, &resource_name))
 }
 
 #[tauri::command]
@@ -319,6 +344,8 @@ pub fn run() {
             compare_snapshots,
             list_groups,
             list_contacts,
+            list_avatars,
+            contact_history,
             account_profile,
             account_health,
             disconnect_account,

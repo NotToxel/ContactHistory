@@ -658,6 +658,39 @@ pub fn changes(
         .collect()
 }
 
+#[derive(serde::Serialize)]
+pub struct ContactHistoryEntry {
+    pub sequence: i64,
+    pub committed_at: String,
+    pub version: i64,
+    pub before: Option<Value>,
+    pub after: Option<Value>,
+}
+
+pub fn contact_history(store: &Store, account: &Account, resource: &str) -> Result<Vec<ContactHistoryEntry>> {
+    let db = store.open_db(&account.id)?;
+    store.verify(account, &db)?;
+    let mut stmt = db.prepare(
+        "SELECT r.first_capture,c.committed_at,r.version,r.kind,r.semantic_json \
+         FROM contact_revisions r JOIN contact_identities i ON i.id=r.contact_id \
+         JOIN captures c ON c.sequence=r.first_capture \
+         WHERE i.resource_name=?1 ORDER BY r.version"
+    )?;
+    let rows = stmt.query_map(params![resource], |r| Ok((
+        r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?,
+        r.get::<_, String>(3)?, r.get::<_, String>(4)?
+    )))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut previous = None;
+    let mut history = Vec::new();
+    for (sequence, committed_at, version, kind, json) in rows {
+        let after = if kind == "deleted" { None } else { Some(serde_json::from_str::<Value>(&json)?) };
+        history.push(ContactHistoryEntry { sequence, committed_at, version, before: previous, after: after.clone() });
+        previous = after;
+    }
+    history.reverse();
+    Ok(history)
+}
+
 pub fn compare_snapshots(
     store: &Store,
     account: &Account,
@@ -751,6 +784,39 @@ pub fn compare_snapshots(
     Ok(changes)
 }
 
+fn is_system_group(resource_name: &str, payload: &Value, name: &str) -> bool {
+    if payload.get("groupType").and_then(Value::as_str) == Some("SYSTEM_CONTACT_GROUP") {
+        return true;
+    }
+    let res = resource_name.to_ascii_lowercase();
+    if res.ends_with("/mycontacts")
+        || res.ends_with("/starred")
+        || res.ends_with("/all")
+        || res.ends_with("/blocked")
+        || res.ends_with("/chatbuddies")
+        || res.ends_with("/coworkers")
+        || res.ends_with("/family")
+        || res.ends_with("/friends")
+    {
+        return true;
+    }
+    let norm_name = name.trim().to_ascii_lowercase().replace(['-', '_', ' '], "");
+    matches!(
+        norm_name.as_str(),
+        "mycontacts"
+            | "starred"
+            | "all"
+            | "allcontacts"
+            | "blocked"
+            | "chatbuddies"
+            | "chatcontacts"
+            | "coworkers"
+            | "family"
+            | "familyandfriends"
+            | "friends"
+    )
+}
+
 pub fn groups(store: &Store, account: &Account, sequence: i64) -> Result<Vec<GroupRow>> {
     let db = store.open_db(&account.id)?;
     store.verify(account, &db)?;
@@ -774,6 +840,11 @@ pub fn groups(store: &Store, account: &Account, sequence: i64) -> Result<Vec<Gro
             .or_else(|| payload.get("formattedName").and_then(Value::as_str))
             .unwrap_or(&resource_name)
             .to_string();
+
+        if is_system_group(&resource_name, &payload, &name) {
+            continue;
+        }
+
         let member_count = payload.get("memberCount").and_then(Value::as_i64);
         out.push(GroupRow {
             resource_name,
@@ -798,46 +869,92 @@ pub fn contacts(
     }
     let db = store.open_db(&account.id)?;
     store.verify(account, &db)?;
-    let pattern = format!("%{}%", search.replace('%', "\\%").replace('_', "\\_"));
-    let rows = if let Some(grp) = group {
-        let grp_pattern = format!("%{}%", grp.replace('%', "\\%").replace('_', "\\_"));
-        let mut stmt = db.prepare(
-            "SELECT i.resource_name,o.payload,r.version \
-             FROM capture_contacts c \
-             JOIN contact_identities i ON i.id=c.contact_id \
-             JOIN contact_revisions r ON r.id=c.revision_id \
-             JOIN captures p ON p.sequence=c.capture_sequence \
-             JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
-             WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' AND o.payload LIKE ?3 ESCAPE '\\' \
-             ORDER BY i.resource_name",
-        )?;
-        let rows = stmt.query_map(params![sequence, pattern, grp_pattern], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-            ))
-        })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()?
-    } else {
-        let mut stmt = db.prepare(
-            "SELECT i.resource_name,o.payload,r.version \
-             FROM capture_contacts c \
-             JOIN contact_identities i ON i.id=c.contact_id \
-             JOIN contact_revisions r ON r.id=c.revision_id \
-             JOIN captures p ON p.sequence=c.capture_sequence \
-             JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
-             WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' \
-             ORDER BY i.resource_name",
-        )?;
-        let rows = stmt.query_map(params![sequence, pattern], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-            ))
-        })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    let clean_search = search.trim();
+    let rows = match (clean_search.is_empty(), group) {
+        (true, None) => {
+            let mut stmt = db.prepare(
+                "SELECT i.resource_name,o.payload,r.version \
+                 FROM capture_contacts c \
+                 JOIN contact_identities i ON i.id=c.contact_id \
+                 JOIN contact_revisions r ON r.id=c.revision_id \
+                 JOIN captures p ON p.sequence=c.capture_sequence \
+                 JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
+                 WHERE c.capture_sequence=?1 AND r.kind='present' \
+                 ORDER BY i.resource_name",
+            )?;
+            let rows = stmt.query_map([sequence], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                ))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        }
+        (true, Some(grp)) => {
+            let grp_pattern = format!("%{}%", grp.replace('%', "\\%").replace('_', "\\_"));
+            let mut stmt = db.prepare(
+                "SELECT i.resource_name,o.payload,r.version \
+                 FROM capture_contacts c \
+                 JOIN contact_identities i ON i.id=c.contact_id \
+                 JOIN contact_revisions r ON r.id=c.revision_id \
+                 JOIN captures p ON p.sequence=c.capture_sequence \
+                 JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
+                 WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' \
+                 ORDER BY i.resource_name",
+            )?;
+            let rows = stmt.query_map(params![sequence, grp_pattern], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                ))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        }
+        (false, None) => {
+            let pattern = format!("%{}%", clean_search.replace('%', "\\%").replace('_', "\\_"));
+            let mut stmt = db.prepare(
+                "SELECT i.resource_name,o.payload,r.version \
+                 FROM capture_contacts c \
+                 JOIN contact_identities i ON i.id=c.contact_id \
+                 JOIN contact_revisions r ON r.id=c.revision_id \
+                 JOIN captures p ON p.sequence=c.capture_sequence \
+                 JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
+                 WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' \
+                 ORDER BY i.resource_name",
+            )?;
+            let rows = stmt.query_map(params![sequence, pattern], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                ))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        }
+        (false, Some(grp)) => {
+            let pattern = format!("%{}%", clean_search.replace('%', "\\%").replace('_', "\\_"));
+            let grp_pattern = format!("%{}%", grp.replace('%', "\\%").replace('_', "\\_"));
+            let mut stmt = db.prepare(
+                "SELECT i.resource_name,o.payload,r.version \
+                 FROM capture_contacts c \
+                 JOIN contact_identities i ON i.id=c.contact_id \
+                 JOIN contact_revisions r ON r.id=c.revision_id \
+                 JOIN captures p ON p.sequence=c.capture_sequence \
+                 JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
+                 WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' AND o.payload LIKE ?3 ESCAPE '\\' \
+                 ORDER BY i.resource_name",
+            )?;
+            let rows = stmt.query_map(params![sequence, pattern, grp_pattern], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)?,
+                ))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        }
     };
     rows.into_iter()
         .map(|(resource_name, payload, version)| {
@@ -874,6 +991,30 @@ mod tests {
             media: vec![],
         }
     }
+    #[test]
+    fn contact_timeline_tracks_edits_deletion_restoration_and_isolation() {
+        let (_temp, store, account) = setup();
+        let first = json!({"resourceName":"people/timeline","names":[{"displayName":"Ada"}],"phoneNumbers":[{"value":"+442079460018"}]});
+        let edited = json!({"resourceName":"people/timeline","names":[{"displayName":"Ada Lovelace"}],"phoneNumbers":[{"value":"+442079460019"}]});
+        publish(&store, &account, scan(vec![first]), "fixture").unwrap();
+        publish(&store, &account, scan(vec![edited.clone()]), "fixture").unwrap();
+        publish(&store, &account, scan(vec![]), "fixture").unwrap();
+        publish(&store, &account, scan(vec![edited]), "fixture").unwrap();
+        let history = contact_history(&store, &account, "people/timeline").unwrap();
+        assert_eq!(history.len(), 4);
+        assert!(history[0].before.is_none());
+        assert!(history[0].after.is_some());
+        assert!(history[1].after.is_none());
+        assert!(history[1].before.is_some());
+        assert_eq!(history[2].before.as_ref().unwrap()["names"][0]["displayName"], "Ada");
+        assert_eq!(history[2].after.as_ref().unwrap()["names"][0]["displayName"], "Ada Lovelace");
+        assert!(history[3].before.is_none());
+        assert!(history.windows(2).all(|pair| pair[0].sequence > pair[1].sequence));
+        let other = store.add_account("timeline-other", "other@example.com").unwrap();
+        assert!(contact_history(&store, &other, "people/timeline").unwrap().is_empty());
+        assert!(contact_history(&store, &account, "missing").unwrap().is_empty());
+    }
+
     #[test]
     fn preserves_deleted_history_and_account_isolation() {
         let (_temp, store, account) = setup();

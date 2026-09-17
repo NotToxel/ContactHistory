@@ -7,6 +7,7 @@ export type Capture = { sequence: number; started_at: string; committed_at: stri
 export type CaptureOutcome = { capture: Capture; is_new: boolean; change_count: number };
 export type Contact = { resource_name: string; display_name: string; payload: Record<string, unknown>; version: number };
 export type GroupRow = { resource_name: string; name: string; member_count: number | null };
+export type ContactHistoryEntry = { sequence: number; committed_at: string; version: number; before: Record<string, unknown> | null; after: Record<string, unknown> | null };
 export type MediaView = { source_url: string; status: string; data_url: string | null; retrieved_at: string | null };
 export type DueStatus = { due: boolean; next_due_at: string | null };
 export type Change = { resource_name: string; kind: string; version: number; before: Record<string, unknown> | null; after: Record<string, unknown> | null };
@@ -24,6 +25,7 @@ export const listenCaptureProgress = (cb: (progress: CaptureProgress) => void): 
 };
 
 export const api = {
+  contactHistory: (accountId: string, resourceName: string) => invoke<ContactHistoryEntry[]>('contact_history', { accountId, resourceName }),
   accounts: () => invoke<Account[]>('list_accounts'),
   profile: (accountId: string) => invoke<AccountProfile>('account_profile', { accountId }),
   connect: (clientId: string, clientSecret: string) => invoke<Account>('connect_google', { clientId, clientSecret }),
@@ -38,6 +40,7 @@ export const api = {
   groups: (accountId: string, sequence: number) => invoke<GroupRow[]>('list_groups', { accountId, sequence }),
   contacts: (accountId: string, sequence: number, search = '', group: string | null = null, offset = 0) =>
     invoke<Contact[]>('list_contacts', { accountId, sequence, search, group, offset }),
+  avatars: (accountId: string, sequence: number) => invoke<Record<string, string>>('list_avatars', { accountId, sequence }),
   health: (accountId: string) => invoke<{ connected: boolean; last_capture: string | null }>('account_health', { accountId }),
   disconnect: (accountId: string) => invoke<void>('disconnect_account', { accountId }),
   media: (accountId: string, sequence: number, resourceName: string) => invoke<MediaView[]>('contact_media', { accountId, sequence, resourceName }),

@@ -104,6 +104,137 @@ pub fn for_contact(
         .collect()
 }
 
+fn preferred_photo_url(payload_str: &str) -> Option<String> {
+    let val: Value = serde_json::from_str(payload_str).ok()?;
+    let photos = val.get("photos")?.as_array()?;
+    // Priority 1: User explicitly set contact photo (source.type == "CONTACT" or url has /contacts/)
+    if let Some(p) = photos.iter().find(|p| {
+        let is_default = p.get("default").and_then(Value::as_bool).unwrap_or(false);
+        if is_default {
+            return false;
+        }
+        let source_type = p
+            .pointer("/metadata/source/type")
+            .or_else(|| p.pointer("/source/type"))
+            .and_then(Value::as_str);
+        let url = p.get("url").and_then(Value::as_str).unwrap_or("");
+        source_type == Some("CONTACT") || url.contains("/contacts/")
+    }) {
+        if let Some(url) = p.get("url").and_then(Value::as_str) {
+            return Some(url.to_string());
+        }
+    }
+    // Priority 2: Non-profile photo
+    if let Some(p) = photos.iter().find(|p| {
+        let is_default = p.get("default").and_then(Value::as_bool).unwrap_or(false);
+        if is_default {
+            return false;
+        }
+        let source_type = p
+            .pointer("/metadata/source/type")
+            .or_else(|| p.pointer("/source/type"))
+            .and_then(Value::as_str);
+        source_type != Some("PROFILE") && source_type != Some("DOMAIN_PROFILE")
+    }) {
+        if let Some(url) = p.get("url").and_then(Value::as_str) {
+            return Some(url.to_string());
+        }
+    }
+    // Priority 3: Fall back to Google profile photo
+    if let Some(p) = photos.iter().find(|p| {
+        let is_default = p.get("default").and_then(Value::as_bool).unwrap_or(false);
+        !is_default && p.get("url").and_then(Value::as_str).is_some()
+    }) {
+        if let Some(url) = p.get("url").and_then(Value::as_str) {
+            return Some(url.to_string());
+        }
+    }
+    // Fallback: first photo url
+    photos
+        .first()
+        .and_then(|p| p.get("url"))
+        .and_then(Value::as_str)
+        .map(String::from)
+}
+
+pub fn avatars_for_capture(
+    store: &Store,
+    account: &Account,
+    sequence: i64,
+) -> Result<std::collections::HashMap<String, String>> {
+    if sequence < 1 {
+        bail!("invalid capture sequence");
+    }
+    let db = store.open_db(&account.id)?;
+    store.verify(account, &db)?;
+    let mut stmt = db.prepare(
+        "SELECT o.resource_name, o.source_url, COALESCE(o.sha256, j.sha256), m.mime, ro.payload \
+         FROM captures c \
+         JOIN observation_media o ON o.run_id=c.run_id \
+         LEFT JOIN media_jobs j ON j.run_id=o.run_id AND j.resource_name=o.resource_name AND j.source_url=o.source_url AND j.status='available' \
+         JOIN media_objects m ON m.sha256=COALESCE(o.sha256, j.sha256) \
+         LEFT JOIN raw_observations ro ON ro.run_id=c.run_id AND ro.resource_name=o.resource_name \
+         WHERE c.sequence=?1 AND (o.status='available' OR j.status='available') \
+         ORDER BY o.resource_name, CASE WHEN o.source_url LIKE '%/contacts/%' THEN 0 ELSE 1 END, o.source_url",
+    )?;
+    let rows = stmt.query_map([sequence], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+            r.get::<_, Option<String>>(4)?,
+        ))
+    })?;
+    let media_dir = store.account_dir(&account.id)?.join("media");
+    let mut map = std::collections::HashMap::new();
+    let mut contact_preferred_urls: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut resource_url_data: std::collections::HashMap<(String, String), String> = std::collections::HashMap::new();
+
+    for row in rows {
+        let (resource_name, source_url, hash, mime, payload_opt) = row?;
+        let ext = match mime.as_str() {
+            "image/jpeg" => "jpg",
+            "image/png" => "png",
+            "image/webp" => "webp",
+            "image/gif" => "gif",
+            _ => continue,
+        };
+        let path = media_dir.join(format!("{hash}.{ext}"));
+        if let Ok(bytes) = fs::read(&path) {
+            let data_url = format!("data:{mime};base64,{}", STANDARD.encode(bytes));
+            resource_url_data.insert((resource_name.clone(), source_url), data_url);
+
+            if let Some(payload_str) = payload_opt {
+                if !contact_preferred_urls.contains_key(&resource_name) {
+                    if let Some(pref) = preferred_photo_url(&payload_str) {
+                        contact_preferred_urls.insert(resource_name.clone(), pref);
+                    }
+                }
+            }
+        }
+    }
+
+    // Resolve resource_name to preferred photo data_url
+    for (resource_name, pref_url) in &contact_preferred_urls {
+        if let Some(data_url) = resource_url_data.get(&(resource_name.clone(), pref_url.clone())) {
+            map.insert(resource_name.clone(), data_url.clone());
+        }
+    }
+
+    // For any resource_name not yet resolved (or if preferred URL wasn't matched),
+    // prioritize user-set contact photo (/contacts/) first, else any available photo
+    for ((resource_name, source_url), data_url) in resource_url_data {
+        if !map.contains_key(&resource_name) {
+            map.insert(resource_name.clone(), data_url.clone());
+        } else if source_url.contains("/contacts/") {
+            map.insert(resource_name, data_url);
+        }
+    }
+
+    Ok(map)
+}
+
 fn allowed(url: &Url) -> bool {
     url.scheme() == "https"
         && url
@@ -482,5 +613,39 @@ mod tests {
             .unwrap();
         assert_eq!(old_status, "failed");
         assert!(!capture.media_complete);
+    }
+
+    #[test]
+    fn avatars_for_capture_returns_offline_data_urls() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().to_path_buf()).unwrap();
+        let account = store.add_account("sub2", "user2@example.test").unwrap();
+        let hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        let media_dir = store.account_dir(&account.id).unwrap().join("media");
+        std::fs::create_dir_all(&media_dir).unwrap();
+        std::fs::write(media_dir.join(format!("{hash}.jpg")), b"fake-jpg-content").unwrap();
+
+        let scan = Scan {
+            contacts: vec![
+                json!({"resourceName":"people/test1","photos":[{"url":"https://example.invalid/p1"}]}),
+            ],
+            groups: vec![],
+            next_sync_token: None,
+            full_sync_at: None,
+            media: vec![MediaObservation {
+                resource_name: "people/test1".into(),
+                source_url: "https://example.invalid/p1".into(),
+                status: "available".into(),
+                sha256: Some(hash.into()),
+                mime: Some("image/jpeg".into()),
+                byte_length: Some(16),
+                retrieved_at: Some(Utc::now().to_rfc3339()),
+            }],
+        };
+        let capture = capture::publish(&store, &account, scan, "fixture").unwrap();
+        let avatars = avatars_for_capture(&store, &account, capture.sequence).unwrap();
+        assert_eq!(avatars.len(), 1);
+        let data_url = avatars.get("people/test1").unwrap();
+        assert!(data_url.starts_with("data:image/jpeg;base64,"));
     }
 }

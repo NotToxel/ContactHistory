@@ -18,7 +18,7 @@ Contact History is styled as a pixel-faithful recreation of Google Contacts (con
 
 ## Typography & Iconography
 
-- **Body & Headings**: Inter (400, 500, 600, 700) matching Google Sans metrics and cleanliness.
+- **Body & Headings**: Bundled Inter Variable (400–700) for consistent, offline typography.
 - **Icons**: Material Symbols Outlined (`opsz 20..48, wght 100..700, FILL 0..1`), rendered via standard `<span class="material-symbols-outlined">`.
 
 ## Window & Navigation Layout
@@ -26,14 +26,15 @@ Contact History is styled as a pixel-faithful recreation of Google Contacts (con
 1. **Integrated Frameless Topbar**:
    - Window decorations disabled in `tauri.conf.json`.
    - `data-tauri-drag-region` on the topbar allows native window dragging and double-click maximize/restore.
-   - Integrated native window controls (Minimize `─`, Maximize/Restore `□`, Close `✕`) on the far right of the topbar with red hover on close.
+   - Integrated window controls use matched 16px stroke icons and full-height 46px hit areas; close uses red hover.
    - Centered pill search bar (`#f1f3f4`, 48px height, 720px max width).
-   - Snapshot picker chip for traveling back in time.
+   - Snapshot picker chip opens an anchored menu with date, count, and selected state.
+   - Profile picture opens the Google-style account switcher; account management stays in Settings.
 
 2. **Sidebar**:
    - 256px wide fixed sidebar with "+ Capture now" elevated pill button.
    - Contacts total count item, Changes diff item, Archive management.
-   - **Labels Section**: Displays contact groups with live counts (e.g. `360 (64)`). Clicking a label filters the contact list and highlights with an active pill (`#c2e7ff`), matching Google Contacts.
+   - **Labels Section**: Displays populated, distinct contact groups with live counts. Clicking a label filters the contact list and highlights with an active pill (`#c2e7ff`). Empty and system groups stay out of navigation.
 
 3. **Table Data Grid**:
    - Sticky table header with 48px row heights.
@@ -52,3 +53,8 @@ Contact History is styled as a pixel-faithful recreation of Google Contacts (con
 5. **Capture Performance & Cancellation**:
    - SQLite cache check avoids re-downloading existing profile photos over HTTP.
    - In-progress capture banner displays percentage and a prominent "Cancel" button.
+
+6. **Interaction Finish**:
+   - Shared hover, pressed, focus, and disabled states across primary controls.
+   - Menus dismiss on outside click or Escape; reduced-motion preference disables decorative transitions.
+   - Search waits briefly during typing and ignores out-of-order responses.
