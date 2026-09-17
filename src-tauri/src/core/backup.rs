@@ -244,7 +244,7 @@ mod tests {
         let imported = restore(&destination, &archive).unwrap();
         assert_eq!(capture::captures(&destination, &imported).unwrap().len(), 1);
         assert_eq!(
-            capture::contacts(&destination, &imported, 1, "", 0).unwrap()[0].display_name,
+            capture::contacts(&destination, &imported, 1, "", None, 0).unwrap()[0].display_name,
             "Ada"
         );
         fs::write(archive.join("archive.db"), b"corrupt").unwrap();

@@ -6,10 +6,27 @@ use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs::OpenOptions,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, LazyLock, Mutex,
+    },
 };
 use uuid::Uuid;
+
+static ACTIVE_CAPTURES: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn cancel(account_id: &str) -> bool {
+    if let Ok(map) = ACTIVE_CAPTURES.lock() {
+        if let Some(token) = map.get(account_id) {
+            token.store(true, Ordering::SeqCst);
+            return true;
+        }
+    }
+    false
+}
 
 pub const FIELDS: &str = "addresses,ageRanges,biographies,birthdays,calendarUrls,clientData,coverPhotos,emailAddresses,events,externalIds,genders,imClients,interests,locales,locations,memberships,metadata,miscKeywords,names,nicknames,occupations,organizations,phoneNumbers,photos,relations,sipAddresses,skills,urls,userDefined";
 pub const COVERAGE: &str = "people.connections:v1:contact+profile:fields-v1";
@@ -24,7 +41,7 @@ pub struct Scan {
     #[serde(default)]
     pub media: Vec<crate::core::media::MediaObservation>,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Capture {
     pub sequence: i64,
     pub started_at: String,
@@ -32,6 +49,24 @@ pub struct Capture {
     pub contact_count: i64,
     pub group_count: i64,
     pub media_complete: bool,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CaptureOutcome {
+    pub capture: Capture,
+    pub is_new: bool,
+    pub change_count: usize,
+}
+impl std::ops::Deref for CaptureOutcome {
+    type Target = Capture;
+    fn deref(&self) -> &Self::Target {
+        &self.capture
+    }
+}
+#[derive(Clone, Serialize)]
+pub struct GroupRow {
+    pub resource_name: String,
+    pub name: String,
+    pub member_count: Option<i64>,
 }
 #[derive(Clone, Serialize)]
 pub struct ContactRow {
@@ -96,8 +131,8 @@ fn deleted(v: &Value) -> bool {
     v.pointer("/metadata/deleted").and_then(Value::as_bool) == Some(true)
 }
 
-pub fn publish(store: &Store, account: &Account, scan: Scan, trigger: &str) -> Result<Capture> {
-    if !["manual", "due", "fixture"].contains(&trigger) {
+pub fn publish(store: &Store, account: &Account, scan: Scan, trigger: &str) -> Result<CaptureOutcome> {
+    if !["manual", "due", "fixture", "import"].contains(&trigger) {
         bail!("invalid capture trigger");
     }
     let dir = store.account_dir(&account.id)?;
@@ -111,14 +146,14 @@ pub fn publish(store: &Store, account: &Account, scan: Scan, trigger: &str) -> R
         .try_lock_exclusive()
         .context("capture already running for this account")?;
     let result = start_run(store, account, trigger)
-        .and_then(|(run_id, started)| publish_locked(store, account, scan, &run_id, &started));
+        .and_then(|(run_id, started)| publish_locked(store, account, scan, &run_id, &started, trigger));
     let _ = lock_file.unlock();
     result
 }
 
-pub fn capture_with<F>(store: &Store, account: &Account, trigger: &str, scan: F) -> Result<Capture>
+pub fn capture_with<F>(store: &Store, account: &Account, trigger: &str, scan: F) -> Result<CaptureOutcome>
 where
-    F: FnOnce() -> Result<Scan>,
+    F: FnOnce(Option<Arc<AtomicBool>>) -> Result<Scan>,
 {
     capture_with_progress(store, account, trigger, scan, |_| {})
 }
@@ -129,12 +164,12 @@ pub fn capture_with_progress<F, P>(
     trigger: &str,
     scan: F,
     progress: P,
-) -> Result<Capture>
+) -> Result<CaptureOutcome>
 where
-    F: FnOnce() -> Result<Scan>,
+    F: FnOnce(Option<Arc<AtomicBool>>) -> Result<Scan>,
     P: Fn(&crate::core::google::CaptureProgress) + Send + Sync,
 {
-    if !["manual", "due"].contains(&trigger) {
+    if !["manual", "due", "import"].contains(&trigger) {
         bail!("invalid capture trigger");
     }
     let dir = store.account_dir(&account.id)?;
@@ -147,30 +182,58 @@ where
     lock_file
         .try_lock_exclusive()
         .context("capture already running for this account")?;
-    let result = start_run(store, account, trigger).and_then(|(run_id, started)| match scan() {
-        Ok(result) => {
-            progress(&crate::core::google::CaptureProgress {
-                account_id: account.id.clone(),
-                stage: "indexing".into(),
-                message: "Writing snapshot to archive database...".into(),
-                current: None,
-                total: None,
-                percent: Some(90),
-            });
-            let cap = publish_locked(store, account, result, &run_id, &started)?;
-            progress(&crate::core::google::CaptureProgress {
-                account_id: account.id.clone(),
-                stage: "complete".into(),
-                message: "Capture completed successfully!".into(),
-                current: Some(cap.contact_count as usize),
-                total: Some(cap.contact_count as usize),
-                percent: Some(100),
-            });
-            Ok(cap)
+
+    let cancel_token = Arc::new(AtomicBool::new(false));
+    {
+        if let Ok(mut map) = ACTIVE_CAPTURES.lock() {
+            map.insert(account.id.clone(), cancel_token.clone());
         }
-        Err(error) => {
-            mark_failed(store, account, &run_id, &error);
-            Err(error)
+    }
+
+    struct CaptureGuard(String);
+    impl Drop for CaptureGuard {
+        fn drop(&mut self) {
+            if let Ok(mut map) = ACTIVE_CAPTURES.lock() {
+                map.remove(&self.0);
+            }
+        }
+    }
+    let _guard = CaptureGuard(account.id.clone());
+
+    let result = start_run(store, account, trigger).and_then(|(run_id, started)| {
+        match scan(Some(cancel_token.clone())) {
+            Ok(result) => {
+                if cancel_token.load(Ordering::Relaxed) {
+                    bail!("Capture cancelled by user");
+                }
+                progress(&crate::core::google::CaptureProgress {
+                    account_id: account.id.clone(),
+                    stage: "indexing".into(),
+                    message: "Writing snapshot to archive database...".into(),
+                    current: None,
+                    total: None,
+                    percent: Some(90),
+                });
+                let outcome = publish_locked(store, account, result, &run_id, &started, trigger)?;
+                let message = if outcome.is_new {
+                    format!("Snapshot #{} captured ({} changes)", outcome.sequence, outcome.change_count)
+                } else {
+                    format!("No changes detected. Snapshot #{} is up to date", outcome.sequence)
+                };
+                progress(&crate::core::google::CaptureProgress {
+                    account_id: account.id.clone(),
+                    stage: "complete".into(),
+                    message,
+                    current: Some(outcome.contact_count as usize),
+                    total: Some(outcome.contact_count as usize),
+                    percent: Some(100),
+                });
+                Ok(outcome)
+            }
+            Err(error) => {
+                mark_failed(store, account, &run_id, &error);
+                Err(error)
+            }
         }
     });
     let _ = lock_file.unlock();
@@ -201,10 +264,11 @@ fn publish_locked(
     scan: Scan,
     run_id: &str,
     started: &str,
-) -> Result<Capture> {
+    trigger: &str,
+) -> Result<CaptureOutcome> {
     let mut db = store.open_db(&account.id)?;
     store.verify(account, &db)?;
-    let outcome = (|| -> Result<Capture> {
+    let outcome = (|| -> Result<CaptureOutcome> {
         let mut contacts = BTreeMap::<String, Value>::new();
         for person in scan.contacts {
             let id = resource(&person)?.to_owned();
@@ -219,17 +283,11 @@ fn publish_locked(
                 bail!("duplicate group {id}");
             }
         }
-        let group_count = groups.len() as i64;
-        let media_complete = scan
-            .media
-            .iter()
-            .all(|m| m.status == "available" || m.status == "generated");
         let committed = Utc::now().to_rfc3339();
         let tx = db.transaction()?;
         let previous: Option<i64> =
             tx.query_row("SELECT MAX(sequence) FROM captures", [], |r| r.get(0))?;
-        tx.execute("INSERT INTO captures(run_id,started_at,committed_at,contact_count,group_count,coverage,media_complete) VALUES(?1,?2,?3,?4,?5,?6,?7)", params![run_id,started,committed,contacts.values().filter(|v| !deleted(v)).count() as i64,groups.len() as i64,COVERAGE,media_complete])?;
-        let sequence = tx.last_insert_rowid();
+
         let mut prior = BTreeMap::<String, (i64, i64, String, String)>::new();
         if let Some(prev) = previous {
             let mut stmt = tx.prepare("SELECT i.resource_name,r.id,r.version,r.kind,r.semantic_json FROM capture_contacts c JOIN contact_identities i ON i.id=c.contact_id JOIN contact_revisions r ON r.id=c.revision_id WHERE c.capture_sequence=?1")?;
@@ -247,8 +305,96 @@ fn publish_locked(
                 prior.insert(key, (id, version, kind, semantic));
             }
         }
+
+        let mut prior_groups = BTreeMap::<String, String>::new();
+        if let Some(prev) = previous {
+            let mut stmt = tx.prepare(
+                "SELECT g.resource_name, r.payload FROM capture_groups g JOIN group_revisions r ON r.id=g.revision_id WHERE g.capture_sequence=?1"
+            )?;
+            let rows = stmt.query_map([prev], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+            for row in rows {
+                let (key, payload) = row?;
+                prior_groups.insert(key, payload);
+            }
+        }
+
+        // Change detection
+        let mut changes_count = 0usize;
         let mut all_ids: BTreeSet<String> = contacts.keys().cloned().collect();
         all_ids.extend(prior.keys().cloned());
+        for key in &all_ids {
+            let value = contacts.get(key);
+            let is_deleted = value.map(deleted).unwrap_or(true);
+            let kind = if is_deleted { "deleted" } else { "present" };
+            let semantic = if is_deleted {
+                "{}".to_string()
+            } else {
+                canonical(value.unwrap().clone())?
+            };
+            if let Some((_, _, old_kind, old_semantic)) = prior.get(key) {
+                if old_kind != kind || old_semantic != &semantic {
+                    changes_count += 1;
+                }
+            } else {
+                if !is_deleted {
+                    changes_count += 1;
+                }
+            }
+        }
+
+        let mut all_group_ids: BTreeSet<String> = groups.keys().cloned().collect();
+        all_group_ids.extend(prior_groups.keys().cloned());
+        for key in &all_group_ids {
+            let value = groups.get(key);
+            if let Some(v) = value {
+                let payload = serde_json::to_string(v)?;
+                if let Some(old_payload) = prior_groups.get(key) {
+                    if old_payload != &payload {
+                        changes_count += 1;
+                    }
+                } else {
+                    changes_count += 1;
+                }
+            } else {
+                changes_count += 1;
+            }
+        }
+
+        // Diff-only snapshot creation: if no changes occurred and a snapshot already exists, don't create duplicate
+        if previous.is_some() && trigger != "fixture" && changes_count == 0 {
+            tx.execute(
+                "UPDATE capture_runs SET result='success',ended_at=?2 WHERE id=?1",
+                params![run_id, Utc::now().to_rfc3339()],
+            )?;
+            tx.commit()?;
+            let prev_seq = previous.unwrap();
+            let prev_cap = db.query_row(
+                "SELECT sequence,started_at,committed_at,contact_count,group_count,media_complete FROM captures WHERE sequence=?1",
+                [prev_seq],
+                |r| Ok(Capture {
+                    sequence: r.get(0)?,
+                    started_at: r.get(1)?,
+                    committed_at: r.get(2)?,
+                    contact_count: r.get(3)?,
+                    group_count: r.get(4)?,
+                    media_complete: r.get(5)?,
+                }),
+            )?;
+            return Ok(CaptureOutcome {
+                capture: prev_cap,
+                is_new: false,
+                change_count: 0,
+            });
+        }
+
+        let group_count = groups.len() as i64;
+        let media_complete = scan
+            .media
+            .iter()
+            .all(|m| m.status == "available" || m.status == "generated");
+        tx.execute("INSERT INTO captures(run_id,started_at,committed_at,contact_count,group_count,coverage,media_complete) VALUES(?1,?2,?3,?4,?5,?6,?7)", params![run_id,started,committed,contacts.values().filter(|v| !deleted(v)).count() as i64,groups.len() as i64,COVERAGE,media_complete])?;
+        let sequence = tx.last_insert_rowid();
+
         tx.execute("DELETE FROM current_contacts", [])?;
 
         {
@@ -392,13 +538,17 @@ fn publish_locked(
             params![run_id, committed],
         )?;
         tx.commit()?;
-        Ok(Capture {
-            sequence,
-            started_at: started.to_owned(),
-            committed_at: committed,
-            contact_count: contacts.values().filter(|v| !deleted(v)).count() as i64,
-            group_count,
-            media_complete,
+        Ok(CaptureOutcome {
+            capture: Capture {
+                sequence,
+                started_at: started.to_owned(),
+                committed_at: committed,
+                contact_count: contacts.values().filter(|v| !deleted(v)).count() as i64,
+                group_count,
+                media_complete,
+            },
+            is_new: true,
+            change_count: changes_count,
         })
     })();
     if let Err(ref err) = outcome {
@@ -507,38 +657,199 @@ pub fn changes(
         })
         .collect()
 }
+
+pub fn compare_snapshots(
+    store: &Store,
+    account: &Account,
+    base_sequence: i64,
+    target_sequence: i64,
+) -> Result<Vec<ChangeRow>> {
+    if base_sequence < 1 || target_sequence < 1 {
+        bail!("invalid capture sequence for comparison");
+    }
+    if base_sequence == target_sequence {
+        return Ok(Vec::new());
+    }
+    let db = store.open_db(&account.id)?;
+    store.verify(account, &db)?;
+    let mut stmt = db.prepare(
+        "SELECT \
+            i.resource_name, \
+            rb.version, rb.kind, rb.semantic_json, \
+            rt.version, rt.kind, rt.semantic_json \
+         FROM ( \
+            SELECT contact_id FROM capture_contacts WHERE capture_sequence = ?1 \
+            UNION \
+            SELECT contact_id FROM capture_contacts WHERE capture_sequence = ?2 \
+         ) u \
+         JOIN contact_identities i ON i.id = u.contact_id \
+         LEFT JOIN capture_contacts cb ON cb.capture_sequence = ?1 AND cb.contact_id = u.contact_id \
+         LEFT JOIN contact_revisions rb ON rb.id = cb.revision_id \
+         LEFT JOIN capture_contacts ct ON ct.capture_sequence = ?2 AND ct.contact_id = u.contact_id \
+         LEFT JOIN contact_revisions rt ON rt.id = ct.revision_id \
+         WHERE cb.revision_id IS NULL \
+            OR ct.revision_id IS NULL \
+            OR cb.revision_id != ct.revision_id \
+            OR rb.semantic_json != rt.semantic_json \
+         ORDER BY i.resource_name"
+    )?;
+
+    let rows = stmt
+        .query_map(params![base_sequence, target_sequence], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<i64>>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<i64>>(4)?,
+                r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<String>>(6)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let mut changes = Vec::new();
+    for (res_name, base_ver, base_kind, base_json, target_ver, target_kind, target_json) in rows {
+        let base_active = base_kind.as_deref() == Some("present") && base_json.as_deref().is_some_and(|s| s != "{}");
+        let target_active = target_kind.as_deref() == Some("present") && target_json.as_deref().is_some_and(|s| s != "{}");
+
+        if !base_active && !target_active {
+            continue;
+        }
+
+        let kind = if !base_active && target_active {
+            "added".to_string()
+        } else if base_active && !target_active {
+            "removed".to_string()
+        } else {
+            "changed".to_string()
+        };
+
+        let before = if base_active {
+            base_json.as_deref().map(serde_json::from_str).transpose()?
+        } else {
+            None
+        };
+
+        let after = if target_active {
+            target_json.as_deref().map(serde_json::from_str).transpose()?
+        } else {
+            None
+        };
+
+        let version = target_ver.unwrap_or_else(|| base_ver.unwrap_or(1));
+
+        changes.push(ChangeRow {
+            resource_name: res_name,
+            kind,
+            version,
+            before,
+            after,
+        });
+    }
+
+    Ok(changes)
+}
+
+pub fn groups(store: &Store, account: &Account, sequence: i64) -> Result<Vec<GroupRow>> {
+    let db = store.open_db(&account.id)?;
+    store.verify(account, &db)?;
+    let mut stmt = db.prepare(
+        "SELECT g.resource_name, r.payload \
+         FROM capture_groups g \
+         JOIN group_revisions r ON r.id = g.revision_id \
+         WHERE g.capture_sequence = ?1 \
+         ORDER BY g.resource_name",
+    )?;
+    let rows = stmt.query_map([sequence], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (resource_name, payload_str) = row?;
+        let payload: Value = serde_json::from_str(&payload_str)?;
+        let name = payload
+            .get("name")
+            .and_then(Value::as_str)
+            .or_else(|| payload.get("formattedName").and_then(Value::as_str))
+            .unwrap_or(&resource_name)
+            .to_string();
+        let member_count = payload.get("memberCount").and_then(Value::as_i64);
+        out.push(GroupRow {
+            resource_name,
+            name,
+            member_count,
+        });
+    }
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
+}
+
 pub fn contacts(
     store: &Store,
     account: &Account,
     sequence: i64,
     search: &str,
-    offset: i64,
+    group: Option<&str>,
+    _offset: i64,
 ) -> Result<Vec<ContactRow>> {
-    if sequence < 1 || offset < 0 {
-        bail!("invalid pagination or capture");
+    if sequence < 1 {
+        bail!("invalid capture sequence");
     }
     let db = store.open_db(&account.id)?;
     store.verify(account, &db)?;
-    let mut stmt = db.prepare("SELECT i.resource_name,o.payload,r.version FROM capture_contacts c JOIN contact_identities i ON i.id=c.contact_id JOIN contact_revisions r ON r.id=c.revision_id JOIN captures p ON p.sequence=c.capture_sequence JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' ORDER BY i.resource_name LIMIT 100 OFFSET ?3")?;
     let pattern = format!("%{}%", search.replace('%', "\\%").replace('_', "\\_"));
-    let rows = stmt.query_map(params![sequence, pattern, offset], |r| {
-        Ok((
-            r.get::<_, String>(0)?,
-            r.get::<_, String>(1)?,
-            r.get::<_, i64>(2)?,
-        ))
-    })?;
-    rows.map(|row| {
-        let (resource_name, payload, version) = row?;
-        let value: Value = serde_json::from_str(&payload)?;
-        Ok(ContactRow {
-            display_name: name(&value),
-            resource_name,
-            payload: value,
-            version,
+    let rows = if let Some(grp) = group {
+        let grp_pattern = format!("%{}%", grp.replace('%', "\\%").replace('_', "\\_"));
+        let mut stmt = db.prepare(
+            "SELECT i.resource_name,o.payload,r.version \
+             FROM capture_contacts c \
+             JOIN contact_identities i ON i.id=c.contact_id \
+             JOIN contact_revisions r ON r.id=c.revision_id \
+             JOIN captures p ON p.sequence=c.capture_sequence \
+             JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
+             WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' AND o.payload LIKE ?3 ESCAPE '\\' \
+             ORDER BY i.resource_name",
+        )?;
+        let rows = stmt.query_map(params![sequence, pattern, grp_pattern], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    } else {
+        let mut stmt = db.prepare(
+            "SELECT i.resource_name,o.payload,r.version \
+             FROM capture_contacts c \
+             JOIN contact_identities i ON i.id=c.contact_id \
+             JOIN contact_revisions r ON r.id=c.revision_id \
+             JOIN captures p ON p.sequence=c.capture_sequence \
+             JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
+             WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' \
+             ORDER BY i.resource_name",
+        )?;
+        let rows = stmt.query_map(params![sequence, pattern], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    rows.into_iter()
+        .map(|(resource_name, payload, version)| {
+            let value: Value = serde_json::from_str(&payload)?;
+            Ok(ContactRow {
+                display_name: name(&value),
+                resource_name,
+                payload: value,
+                version,
+            })
         })
-    })
-    .collect()
+        .collect()
 }
 
 #[cfg(test)]
@@ -569,12 +880,12 @@ mod tests {
         let first=publish(&store,&account,scan(vec![json!({"resourceName":"people/1","names":[{"displayName":"Ada"}],"emailAddresses":[{"value":"a@example.com"}]})]),"fixture").unwrap();
         let second = publish(&store, &account, scan(vec![]), "fixture").unwrap();
         assert_eq!(
-            contacts(&store, &account, first.sequence, "", 0)
+            contacts(&store, &account, first.sequence, "", None, 0)
                 .unwrap()
                 .len(),
             1
         );
-        assert!(contacts(&store, &account, second.sequence, "", 0)
+        assert!(contacts(&store, &account, second.sequence, "", None, 0)
             .unwrap()
             .is_empty());
         let db = store.open_db(&account.id).unwrap();
@@ -645,7 +956,7 @@ mod tests {
         let saved = publish(&store, &account, observation, "fixture").unwrap();
         assert!(!saved.media_complete);
         assert_eq!(
-            contacts(&store, &account, saved.sequence, "Photo", 0)
+            contacts(&store, &account, saved.sequence, "Photo", None, 0)
                 .unwrap()
                 .len(),
             1
@@ -703,5 +1014,56 @@ mod tests {
             changes[0].after.as_ref().unwrap()["names"][0]["displayName"],
             "Ada L."
         );
+    }
+    #[test]
+    fn compare_snapshots_identifies_diffs_across_arbitrary_captures() {
+        let (_temp, store, account) = setup();
+        let cap1 = publish(
+            &store,
+            &account,
+            scan(vec![
+                json!({"resourceName":"people/1","names":[{"displayName":"Alice"}]}),
+                json!({"resourceName":"people/2","names":[{"displayName":"Bob"}]}),
+            ]),
+            "fixture",
+        )
+        .unwrap();
+
+        let cap2 = publish(
+            &store,
+            &account,
+            scan(vec![
+                json!({"resourceName":"people/1","names":[{"displayName":"Alice Smith"}]}),
+                json!({"resourceName":"people/2","names":[{"displayName":"Bob"}]}),
+                json!({"resourceName":"people/3","names":[{"displayName":"Charlie"}]}),
+            ]),
+            "fixture",
+        )
+        .unwrap();
+
+        let cap3 = publish(
+            &store,
+            &account,
+            scan(vec![
+                json!({"resourceName":"people/1","names":[{"displayName":"Alice Smith"}]}),
+                json!({"resourceName":"people/3","names":[{"displayName":"Charlie Brown"}]}),
+            ]),
+            "fixture",
+        )
+        .unwrap();
+
+        // Compare cap1 to cap3 directly
+        let diff = compare_snapshots(&store, &account, cap1.sequence, cap3.sequence).unwrap();
+        assert_eq!(diff.len(), 3);
+        let p1 = diff.iter().find(|c| c.resource_name == "people/1").unwrap();
+        assert_eq!(p1.kind, "changed");
+        let p2 = diff.iter().find(|c| c.resource_name == "people/2").unwrap();
+        assert_eq!(p2.kind, "removed");
+        let p3 = diff.iter().find(|c| c.resource_name == "people/3").unwrap();
+        assert_eq!(p3.kind, "added");
+
+        // Identity comparison returns empty
+        let same = compare_snapshots(&store, &account, cap2.sequence, cap2.sequence).unwrap();
+        assert!(same.is_empty());
     }
 }

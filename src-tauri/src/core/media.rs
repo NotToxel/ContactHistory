@@ -37,6 +37,7 @@ pub struct MediaObservation {
 
 #[derive(Serialize)]
 pub struct MediaView {
+    pub source_url: String,
     pub status: String,
     pub data_url: Option<String>,
     pub retrieved_at: Option<String>,
@@ -53,19 +54,20 @@ pub fn for_contact(
     }
     let db = store.open_db(&account.id)?;
     store.verify(account, &db)?;
-    let mut stmt=db.prepare("SELECT o.status,COALESCE(o.sha256,j.sha256),m.mime,m.retrieved_at FROM captures c JOIN observation_media o ON o.run_id=c.run_id LEFT JOIN media_jobs j ON j.run_id=o.run_id AND j.resource_name=o.resource_name AND j.source_url=o.source_url AND j.status='available' LEFT JOIN media_objects m ON m.sha256=COALESCE(o.sha256,j.sha256) WHERE c.sequence=?1 AND o.resource_name=?2 ORDER BY o.source_url")?;
+    let mut stmt=db.prepare("SELECT o.source_url,o.status,COALESCE(o.sha256,j.sha256),m.mime,m.retrieved_at FROM captures c JOIN observation_media o ON o.run_id=c.run_id LEFT JOIN media_jobs j ON j.run_id=o.run_id AND j.resource_name=o.resource_name AND j.source_url=o.source_url AND j.status='available' LEFT JOIN media_objects m ON m.sha256=COALESCE(o.sha256,j.sha256) WHERE c.sequence=?1 AND o.resource_name=?2 ORDER BY o.source_url")?;
     let rows = stmt
         .query_map(params![sequence, resource_name], |r| {
             Ok((
                 r.get::<_, String>(0)?,
-                r.get::<_, Option<String>>(1)?,
+                r.get::<_, String>(1)?,
                 r.get::<_, Option<String>>(2)?,
                 r.get::<_, Option<String>>(3)?,
+                r.get::<_, Option<String>>(4)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     rows.into_iter()
-        .map(|(status, hash, mime, retrieved_at)| {
+        .map(|(source_url, status, hash, mime, retrieved_at)| {
             let late = status == "failed" && hash.is_some();
             let data_url = if let (Some(hash), Some(mime)) = (hash, mime) {
                 if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -93,6 +95,7 @@ pub fn for_contact(
                 None
             };
             Ok(MediaView {
+                source_url,
                 status: if late { "late".into() } else { status },
                 data_url,
                 retrieved_at,
@@ -194,23 +197,70 @@ pub(crate) fn retrieve(
     retrieve_with_client(&client, store, account, source)
 }
 
+fn cached_media_map(
+    store: &Store,
+    account: &Account,
+) -> std::collections::HashMap<String, (String, String, i64, String)> {
+    let mut map = std::collections::HashMap::new();
+    let Ok(db) = store.open_db(&account.id) else {
+        return map;
+    };
+    let Ok(media_dir) = store.account_dir(&account.id).map(|d| d.join("media")) else {
+        return map;
+    };
+    let Ok(mut stmt) = db.prepare(
+        "SELECT o.source_url, o.sha256, m.mime, m.byte_length, m.retrieved_at \
+         FROM observation_media o \
+         JOIN media_objects m ON m.sha256 = o.sha256 \
+         WHERE o.status = 'available' AND o.sha256 IS NOT NULL",
+    ) else {
+        return map;
+    };
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, i64>(3)?,
+            r.get::<_, String>(4)?,
+        ))
+    });
+    if let Ok(rows) = rows {
+        for (source_url, sha256, mime, byte_length, retrieved_at) in rows.flatten() {
+            let ext = match mime.as_str() {
+                "image/jpeg" => "jpg",
+                "image/png" => "png",
+                "image/webp" => "webp",
+                "image/gif" => "gif",
+                _ => "jpg",
+            };
+            if media_dir.join(format!("{sha256}.{ext}")).exists() {
+                map.insert(source_url, (sha256, mime, byte_length, retrieved_at));
+            }
+        }
+    }
+    map
+}
+
 #[allow(dead_code)]
 pub fn collect(store: &Store, account: &Account, contacts: &[Value]) -> Vec<MediaObservation> {
-    collect_with_progress(store, account, contacts, |_, _| {})
+    collect_with_progress(store, account, contacts, None, |_, _| {})
 }
 
 pub fn collect_with_progress<F>(
     store: &Store,
     account: &Account,
     contacts: &[Value],
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     progress_callback: F,
 ) -> Vec<MediaObservation>
 where
     F: Fn(usize, usize) + Send + Sync,
 {
+    let cached_map = cached_media_map(store, account);
     let mut seen = BTreeSet::new();
     let mut items_to_fetch = Vec::new();
-    let mut generated_items = Vec::new();
+    let mut all_observations = Vec::new();
 
     for person in contacts {
         let Some(resource_name) = person.get("resourceName").and_then(Value::as_str) else {
@@ -227,7 +277,7 @@ where
                     }
                     let generated = photo.get("default").and_then(Value::as_bool) == Some(true);
                     if generated {
-                        generated_items.push(MediaObservation {
+                        all_observations.push(MediaObservation {
                             resource_name: resource_name.into(),
                             source_url: url.into(),
                             status: "generated".to_string(),
@@ -235,6 +285,16 @@ where
                             mime: None,
                             byte_length: None,
                             retrieved_at: None,
+                        });
+                    } else if let Some((sha256, mime, byte_length, retrieved_at)) = cached_map.get(url) {
+                        all_observations.push(MediaObservation {
+                            resource_name: resource_name.into(),
+                            source_url: url.into(),
+                            status: "available".to_string(),
+                            sha256: Some(sha256.clone()),
+                            mime: Some(mime.clone()),
+                            byte_length: Some(*byte_length),
+                            retrieved_at: Some(retrieved_at.clone()),
                         });
                     } else {
                         items_to_fetch.push((resource_name.to_owned(), url.to_owned()));
@@ -245,7 +305,7 @@ where
     }
 
     if items_to_fetch.is_empty() {
-        return generated_items;
+        return all_observations;
     }
 
     let unique_urls: Vec<String> = items_to_fetch
@@ -261,9 +321,8 @@ where
     let client = match media_client() {
         Ok(c) => c,
         Err(_) => {
-            let mut results = generated_items;
             for (res, url) in items_to_fetch {
-                results.push(MediaObservation {
+                all_observations.push(MediaObservation {
                     resource_name: res,
                     source_url: url,
                     status: "failed".to_string(),
@@ -273,7 +332,7 @@ where
                     retrieved_at: None,
                 });
             }
-            return results;
+            return all_observations;
         }
     };
 
@@ -284,9 +343,15 @@ where
 
     let worker_count = std::cmp::min(8, total);
 
+    let cancel_ref = cancel.as_ref();
     std::thread::scope(|s| {
         for _ in 0..worker_count {
             s.spawn(|| loop {
+                if let Some(c) = cancel_ref {
+                    if c.load(Ordering::Relaxed) {
+                        break;
+                    }
+                }
                 let idx = url_index.fetch_add(1, Ordering::SeqCst);
                 if idx >= total {
                     break;
@@ -307,7 +372,6 @@ where
     });
 
     let results = results_map.into_inner().unwrap();
-    let mut all_observations = generated_items;
 
     for (res, url) in items_to_fetch {
         let (status, sha256, mime, byte_length, retrieved_at) = match results.get(&url) {

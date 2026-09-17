@@ -13,6 +13,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::{
     io::{Read, Write},
     net::TcpListener,
@@ -163,11 +167,54 @@ pub fn connect(store: &Store, config: ClientConfig) -> Result<Account> {
         .get("email")
         .and_then(Value::as_str)
         .context("email missing")?;
+    let name = identity.get("name").and_then(Value::as_str).map(str::to_owned);
+    let picture = identity.get("picture").and_then(Value::as_str).map(str::to_owned);
     let account = store.add_account(subject, email)?;
     credential(&account)?.set_password(refresh)?;
     let config_path = store.account_dir(&account.id)?.join("google-client.json");
     std::fs::write(config_path, serde_json::to_vec(&config)?)?;
+    let _ = std::fs::write(
+        store.account_dir(&account.id)?.join("profile.json"),
+        serde_json::to_vec(&AccountProfile {
+            email: email.to_string(),
+            name,
+            picture,
+        })?,
+    );
     Ok(account)
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct AccountProfile {
+    pub email: String,
+    pub name: Option<String>,
+    pub picture: Option<String>,
+}
+
+pub fn profile(store: &Store, account: &Account) -> Result<AccountProfile> {
+    let cache_path = store.account_dir(&account.id)?.join("profile.json");
+    if let Ok(bytes) = std::fs::read(&cache_path) {
+        if let Ok(cached) = serde_json::from_slice::<AccountProfile>(&bytes) {
+            return Ok(cached);
+        }
+    }
+    let token = access_token(store, account)?;
+    let client = http()?;
+    let identity: Value = client
+        .get("https://openidconnect.googleapis.com/v1/userinfo")
+        .bearer_auth(&token)
+        .send()?
+        .error_for_status()?
+        .json()?;
+    let name = identity.get("name").and_then(Value::as_str).map(str::to_owned);
+    let picture = identity.get("picture").and_then(Value::as_str).map(str::to_owned);
+    let profile = AccountProfile {
+        email: account.email.clone(),
+        name,
+        picture,
+    };
+    let _ = std::fs::write(&cache_path, serde_json::to_vec(&profile)?);
+    Ok(profile)
 }
 
 fn access_token(store: &Store, account: &Account) -> Result<String> {
@@ -225,10 +272,15 @@ fn get_page(client: &Client, url: Url, token: &str) -> Result<Value> {
 
 #[allow(dead_code)]
 pub fn full_scan(store: &Store, account: &Account) -> Result<Scan> {
-    full_scan_with_progress(store, account, |_| {})
+    full_scan_with_progress(store, account, None, |_| {})
 }
 
-pub fn full_scan_with_progress<F>(store: &Store, account: &Account, progress: F) -> Result<Scan>
+pub fn full_scan_with_progress<F>(
+    store: &Store,
+    account: &Account,
+    cancel: Option<Arc<AtomicBool>>,
+    progress: F,
+) -> Result<Scan>
 where
     F: Fn(&CaptureProgress) + Send + Sync,
 {
@@ -247,6 +299,11 @@ where
     let mut seen_pages = BTreeSet::new();
     let mut page_count = 0;
     let sync_token = loop {
+        if let Some(ref c) = cancel {
+            if c.load(Ordering::Relaxed) {
+                bail!("Capture cancelled by user");
+            }
+        }
         page_count += 1;
         if let Some(ref page) = next {
             if !seen_pages.insert(page.clone()) {
@@ -302,6 +359,11 @@ where
     let mut next: Option<String> = None;
     let mut seen_pages = BTreeSet::new();
     loop {
+        if let Some(ref c) = cancel {
+            if c.load(Ordering::Relaxed) {
+                bail!("Capture cancelled by user");
+            }
+        }
         if let Some(ref page) = next {
             if !seen_pages.insert(page.clone()) {
                 bail!("repeated group page token");
@@ -330,6 +392,12 @@ where
         }
     }
 
+    if let Some(ref c) = cancel {
+        if c.load(Ordering::Relaxed) {
+            bail!("Capture cancelled by user");
+        }
+    }
+
     progress(&CaptureProgress {
         account_id: account.id.clone(),
         stage: "media".into(),
@@ -339,7 +407,7 @@ where
         percent: Some(32),
     });
 
-    let media = media::collect_with_progress(store, account, &contacts, |done, total| {
+    let media = media::collect_with_progress(store, account, &contacts, cancel.clone(), |done, total| {
         let pct = if total > 0 {
             35 + ((done as f32 / total as f32) * 45.0) as u8
         } else {
@@ -354,6 +422,12 @@ where
             percent: Some(pct),
         });
     });
+
+    if let Some(ref c) = cancel {
+        if c.load(Ordering::Relaxed) {
+            bail!("Capture cancelled by user");
+        }
+    }
 
     progress(&CaptureProgress {
         account_id: account.id.clone(),
@@ -374,10 +448,15 @@ where
 }
 
 pub fn observe(store: &Store, account: &Account) -> Result<Scan> {
-    observe_with_progress(store, account, |_| {})
+    observe_with_progress(store, account, None, |_| {})
 }
 
-pub fn observe_with_progress<F>(store: &Store, account: &Account, progress: F) -> Result<Scan>
+pub fn observe_with_progress<F>(
+    store: &Store,
+    account: &Account,
+    cancel: Option<Arc<AtomicBool>>,
+    progress: F,
+) -> Result<Scan>
 where
     F: Fn(&CaptureProgress) + Send + Sync,
 {
@@ -394,14 +473,14 @@ where
         let age = DateTime::parse_from_rfc3339(&full_at)?.with_timezone(&Utc);
         if coverage == crate::core::capture::COVERAGE && Utc::now() - age < ChronoDuration::days(6)
         {
-            match delta_scan_with_progress(store, account, &cursor, &full_at, |p| progress(p)) {
+            match delta_scan_with_progress(store, account, &cursor, &full_at, cancel.clone(), |p| progress(p)) {
                 Ok(result) => return Ok(result),
                 Err(error) if error.to_string().contains("EXPIRED_SYNC_TOKEN") => {}
                 Err(error) => return Err(error),
             }
         }
     }
-    full_scan_with_progress(store, account, progress)
+    full_scan_with_progress(store, account, cancel, progress)
 }
 
 fn merge_delta(base: Vec<Value>, changes: Vec<Value>) -> Result<Vec<Value>> {
@@ -430,8 +509,13 @@ fn merge_delta(base: Vec<Value>, changes: Vec<Value>) -> Result<Vec<Value>> {
 }
 
 #[allow(dead_code)]
-fn delta_scan(store: &Store, account: &Account, cursor: &str, full_at: &str) -> Result<Scan> {
-    delta_scan_with_progress(store, account, cursor, full_at, |_| {})
+fn delta_scan(
+    store: &Store,
+    account: &Account,
+    cursor: &str,
+    full_at: &str,
+) -> Result<Scan> {
+    delta_scan_with_progress(store, account, cursor, full_at, None, |_| {})
 }
 
 fn delta_scan_with_progress<F>(
@@ -439,6 +523,7 @@ fn delta_scan_with_progress<F>(
     account: &Account,
     cursor: &str,
     full_at: &str,
+    cancel: Option<Arc<AtomicBool>>,
     progress: F,
 ) -> Result<Scan>
 where
@@ -458,6 +543,11 @@ where
     let mut next: Option<String> = None;
     let mut seen_pages = BTreeSet::new();
     let next_sync_token = loop {
+        if let Some(ref c) = cancel {
+            if c.load(Ordering::Relaxed) {
+                bail!("Capture cancelled by user");
+            }
+        }
         if let Some(ref page) = next {
             if !seen_pages.insert(page.clone()) {
                 bail!("repeated contact page token");
@@ -516,6 +606,11 @@ where
     let mut next: Option<String> = None;
     let mut seen_pages = BTreeSet::new();
     loop {
+        if let Some(ref c) = cancel {
+            if c.load(Ordering::Relaxed) {
+                bail!("Capture cancelled by user");
+            }
+        }
         if let Some(ref page) = next {
             if !seen_pages.insert(page.clone()) {
                 bail!("repeated group page token");
@@ -544,6 +639,12 @@ where
         }
     }
 
+    if let Some(ref c) = cancel {
+        if c.load(Ordering::Relaxed) {
+            bail!("Capture cancelled by user");
+        }
+    }
+
     progress(&CaptureProgress {
         account_id: account.id.clone(),
         stage: "media".into(),
@@ -553,7 +654,7 @@ where
         percent: Some(35),
     });
 
-    let media = media::collect_with_progress(store, account, &contacts, |done, total| {
+    let media = media::collect_with_progress(store, account, &contacts, cancel.clone(), |done, total| {
         let pct = if total > 0 {
             35 + ((done as f32 / total as f32) * 45.0) as u8
         } else {
@@ -568,6 +669,12 @@ where
             percent: Some(pct),
         });
     });
+
+    if let Some(ref c) = cancel {
+        if c.load(Ordering::Relaxed) {
+            bail!("Capture cancelled by user");
+        }
+    }
 
     progress(&CaptureProgress {
         account_id: account.id.clone(),

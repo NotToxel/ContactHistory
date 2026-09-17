@@ -44,7 +44,7 @@ pub fn capture_due(store: &Store, account: &Account) -> Result<Option<capture::C
     }
     // A second process can publish after the first due check. The lock serializes the
     // scan and this recheck avoids an unnecessary second full observation.
-    let result = capture::capture_with(store, account, "due", || {
+    let result = capture::capture_with(store, account, "due", |_| {
         if !status(store, account)?.due {
             return Err(anyhow::anyhow!("capture is no longer due"));
         }
@@ -52,7 +52,7 @@ pub fn capture_due(store: &Store, account: &Account) -> Result<Option<capture::C
     });
     match result {
         Err(error) if error.to_string() == "capture is no longer due" => Ok(None),
-        other => other.map(Some),
+        other => other.map(|outcome| Some(outcome.capture)),
     }
 }
 

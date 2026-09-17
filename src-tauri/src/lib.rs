@@ -35,8 +35,8 @@ async fn connect_google(client_id: String, client_secret: String) -> Result<Acco
 async fn capture_now(
     app: tauri::AppHandle,
     account_id: String,
-) -> Result<capture::Capture, String> {
-    tauri::async_runtime::spawn_blocking(move || -> Result<capture::Capture, String> {
+) -> Result<capture::CaptureOutcome, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<capture::CaptureOutcome, String> {
         let store = store()?;
         let account = error(store.account(&account_id))?;
         let app_handle = app.clone();
@@ -48,12 +48,30 @@ async fn capture_now(
             &store,
             &account,
             "manual",
-            || google::observe_with_progress(&store, &account, &emit),
+            |cancel| google::observe_with_progress(&store, &account, cancel, &emit),
             &emit,
         ))
     })
     .await
     .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn import_csv(
+    account_id: String,
+    path: String,
+) -> Result<capture::CaptureOutcome, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<capture::CaptureOutcome, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        let scan = error(core::import::parse_csv(std::path::Path::new(&path)))?;
+        error(capture::publish(&store, &account, scan, "import"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+fn cancel_capture(account_id: String) -> Result<bool, String> {
+    Ok(capture::cancel(&account_id))
 }
 #[tauri::command]
 fn list_captures(account_id: String) -> Result<Vec<capture::Capture>, String> {
@@ -78,10 +96,17 @@ fn list_changes(
     error(capture::changes(&store, &account, sequence, offset))
 }
 #[tauri::command]
+fn list_groups(account_id: String, sequence: i64) -> Result<Vec<capture::GroupRow>, String> {
+    let store = store()?;
+    let account = error(store.account(&account_id))?;
+    error(capture::groups(&store, &account, sequence))
+}
+#[tauri::command]
 fn list_contacts(
     account_id: String,
     sequence: i64,
     search: String,
+    group: Option<String>,
     offset: i64,
 ) -> Result<Vec<capture::ContactRow>, String> {
     if search.len() > 200 {
@@ -90,8 +115,20 @@ fn list_contacts(
     let store = store()?;
     let account = error(store.account(&account_id))?;
     error(capture::contacts(
-        &store, &account, sequence, &search, offset,
+        &store,
+        &account,
+        sequence,
+        &search,
+        group.as_deref(),
+        offset,
     ))
+}
+
+#[tauri::command]
+fn account_profile(account_id: String) -> Result<google::AccountProfile, String> {
+    let store = store()?;
+    let account = error(store.account(&account_id))?;
+    error(google::profile(&store, &account))
 }
 
 #[derive(Serialize)]
@@ -220,6 +257,54 @@ async fn restore_archive(source: String) -> Result<Account, String> {
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+fn compare_snapshots(
+    account_id: String,
+    base_sequence: i64,
+    target_sequence: i64,
+) -> Result<Vec<capture::ChangeRow>, String> {
+    let store = store()?;
+    let account = error(store.account(&account_id))?;
+    error(capture::compare_snapshots(
+        &store,
+        &account,
+        base_sequence,
+        target_sequence,
+    ))
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    open::that(&url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn win_minimize(window: tauri::Window) -> Result<(), String> {
+    window.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn win_toggle_maximize(window: tauri::Window) -> Result<bool, String> {
+    let is_max = window.is_maximized().map_err(|e| e.to_string())?;
+    if is_max {
+        window.unmaximize().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        window.maximize().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+fn win_close(window: tauri::Window) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn win_is_maximized(window: tauri::Window) -> Result<bool, String> {
+    window.is_maximized().map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -227,10 +312,14 @@ pub fn run() {
             list_accounts,
             connect_google,
             capture_now,
+            cancel_capture,
             list_captures,
             capture_at_time,
             list_changes,
+            compare_snapshots,
+            list_groups,
             list_contacts,
+            account_profile,
             account_health,
             disconnect_account,
             contact_media,
@@ -241,8 +330,14 @@ pub fn run() {
             enable_schedule,
             disable_schedule,
             export_capture,
+            import_csv,
             backup_account,
-            restore_archive
+            restore_archive,
+            open_external_url,
+            win_minimize,
+            win_toggle_maximize,
+            win_close,
+            win_is_maximized
         ])
         .run(tauri::generate_context!())
         .expect("error while running Contact History");

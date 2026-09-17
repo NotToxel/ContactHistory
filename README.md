@@ -4,17 +4,17 @@ Windows-first local archive for observed Google Contacts. The app implements rea
 
 ## Develop
 
-Install Node.js and the Rust/MSVC toolchain with the Windows WebView2/Tauri prerequisites. Then run:
+Install Bun (or Node.js) and the Rust/MSVC toolchain with the Windows WebView2/Tauri prerequisites. Then run:
 
 ```powershell
-npm install
-npm run tauri dev
+bun install
+bun run tauri dev
 ```
 
 For checks:
 
 ```powershell
-npm run build
+bun run build
 cd src-tauri
 cargo test
 cargo fmt --check
