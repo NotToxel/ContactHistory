@@ -139,8 +139,9 @@
   let captures: Capture[] = $state([]);
   let capture: Capture | undefined = $state();
   let groups: GroupRow[] = $state([]);
-  let selectedGroups: string[] = $state([]);
-  let labelMatchMode: 'any' | 'all' = $state('any');
+  let selectedGroups = $state<string[]>([]);
+  const selectedGroup = $derived(selectedGroups[0] ?? null);
+  let labelMatchMode = $state<'any' | 'all'>('any');
   let allSnapshotContacts: Contact[] = $state([]);
   let avatarMap: Record<string, string> = $state({});
   let mediaCache = new Map<string, MediaView[]>();
@@ -515,21 +516,55 @@
   function updateDisplayedContacts() {
     let filtered = allSnapshotContacts;
 
-    // Label filter only: search does not filter existing list while typing
-    if (selectedGroup) {
-      const chosenName = groups.find((group) => group.resource_name === selectedGroup)?.name?.trim().toLocaleLowerCase()
-        || groupMap.get(selectedGroup)?.trim().toLocaleLowerCase();
-      const matchingGroups = new Set(
-        groups
-          .filter((group) => group.name?.trim().toLocaleLowerCase() === chosenName)
-          .map((group) => group.resource_name)
-      );
-      if (selectedGroup) matchingGroups.add(selectedGroup);
-      filtered = filtered.filter((contact) =>
-        ((contact.payload.memberships as Array<any>) || []).some((membership) =>
-          matchingGroups.has(membership?.contactGroupMembership?.contactGroupResourceName)
-        )
-      );
+    // Multi-select label filter
+    if (selectedGroups.length > 0) {
+      const groupAliasSets: Set<string>[] = [];
+
+      for (const res of selectedGroups) {
+        const chosenName = groups.find((group) => group.resource_name === res)?.name?.trim().toLocaleLowerCase()
+          || groupMap.get(res)?.trim().toLocaleLowerCase();
+        const aliasSet = new Set<string>();
+        aliasSet.add(res);
+        if (chosenName) {
+          for (const group of groups) {
+            if (group.name?.trim().toLocaleLowerCase() === chosenName) {
+              aliasSet.add(group.resource_name);
+            }
+          }
+        }
+        groupAliasSets.push(aliasSet);
+      }
+
+      if (labelMatchMode === 'all') {
+        filtered = filtered.filter((contact) => {
+          const contactMemberships = (contact.payload.memberships as Array<any>) || [];
+          const contactGroupResources = new Set(
+            contactMemberships
+              .map((m) => m?.contactGroupMembership?.contactGroupResourceName)
+              .filter(Boolean)
+          );
+          return groupAliasSets.every((aliasSet) => {
+            for (const r of aliasSet) {
+              if (contactGroupResources.has(r)) return true;
+            }
+            return false;
+          });
+        });
+      } else {
+        // 'any' mode (OR logic)
+        const combinedAliases = new Set<string>();
+        for (const set of groupAliasSets) {
+          for (const r of set) {
+            combinedAliases.add(r);
+          }
+        }
+        filtered = filtered.filter((contact) => {
+          const contactMemberships = (contact.payload.memberships as Array<any>) || [];
+          return contactMemberships.some((m) =>
+            combinedAliases.has(m?.contactGroupMembership?.contactGroupResourceName)
+          );
+        });
+      }
     }
 
     contacts = filtered;
@@ -703,13 +738,13 @@
 
   // Favourites starred at top
   const favouriteContacts = $derived.by(() => {
-    if (selectedGroup) return [];
+    if (selectedGroups.length > 0) return [];
     return sortedContacts.filter(isFavourite);
   });
 
   // Remaining contacts
   const otherContacts = $derived.by(() => {
-    if (selectedGroup) return sortedContacts;
+    if (selectedGroups.length > 0) return sortedContacts;
     const favIds = new Set(favouriteContacts.map((c) => c.resource_name));
     return sortedContacts.filter((c) => !favIds.has(c.resource_name));
   });
@@ -1012,7 +1047,7 @@
     chosenChange = undefined;
     search = '';
     offset = 0;
-    selectedGroup = null;
+    selectedGroups = [];
     try {
       accountProfile = await api.profile(account.id);
     } catch (_) {
@@ -1412,7 +1447,39 @@
   }
 
   function selectLabelFilter(groupResourceName: string | null) {
-    selectedGroup = groupResourceName;
+    if (groupResourceName === null) {
+      selectedGroups = [];
+    } else {
+      selectedGroups = [groupResourceName];
+    }
+    if (window.innerWidth < 1000) sidebarCollapsed = true;
+    offset = 0;
+    detail = undefined;
+    updateDisplayedContacts();
+  }
+
+  function toggleLabelFilter(groupResourceName: string) {
+    if (selectedGroups.includes(groupResourceName)) {
+      selectedGroups = selectedGroups.filter((g) => g !== groupResourceName);
+    } else {
+      selectedGroups = [...selectedGroups, groupResourceName];
+    }
+    if (window.innerWidth < 1000) sidebarCollapsed = true;
+    offset = 0;
+    detail = undefined;
+    updateDisplayedContacts();
+  }
+
+  function isolateLabelFilter(groupResourceName: string) {
+    selectedGroups = [groupResourceName];
+    if (window.innerWidth < 1000) sidebarCollapsed = true;
+    offset = 0;
+    detail = undefined;
+    updateDisplayedContacts();
+  }
+
+  function clearLabelFilter() {
+    selectedGroups = [];
     if (window.innerWidth < 1000) sidebarCollapsed = true;
     offset = 0;
     detail = undefined;
@@ -1422,7 +1489,7 @@
   async function changeCapture(sequence: number) {
     capture = captures.find((c) => c.sequence === sequence);
     offset = 0;
-    selectedGroup = null;
+    selectedGroups = [];
     showSnapshotDropdown = false;
     await refreshGroups();
     await refreshContacts();
@@ -2351,8 +2418,8 @@
       <div class="sidebar-section">
         <button
           class="nav-item"
-          class:active={pageView === 'contacts' && selectedGroup === null && !detail}
-          onclick={() => { selectLabelFilter(null); navigate('contacts'); }}
+          class:active={pageView === 'contacts' && selectedGroups.length === 0 && !detail}
+          onclick={() => { clearLabelFilter(); navigate('contacts'); }}
         >
           <span class="material-symbols-outlined nav-icon icon-filled">person</span>
           <span class="nav-label">Contacts</span>
@@ -2417,23 +2484,64 @@
       <!-- Labels Section -->
       {#if groups.length > 0}
         <div class="sidebar-section">
-          <div class="sidebar-section-header">Labels</div>
+          <div class="sidebar-section-header sidebar-section-header-row">
+            <div class="sidebar-header-left">
+              <span>Labels</span>
+              {#if selectedGroups.length > 0}
+                <span class="sidebar-header-badge" title="{selectedGroups.length} label{selectedGroups.length > 1 ? 's' : ''} active">
+                  {selectedGroups.length}
+                </span>
+              {/if}
+            </div>
+            {#if selectedGroups.length > 0}
+              <button
+                type="button"
+                class="sidebar-header-clear"
+                onclick={clearLabelFilter}
+                title="Clear all selected labels"
+                aria-label="Clear all selected labels"
+              >
+                Clear
+              </button>
+            {/if}
+          </div>
 
           {#each groups as group}
-            <button
-              class="nav-item"
-              class:active={pageView === 'contacts' && selectedGroup === group.resource_name}
-              onclick={() => { selectLabelFilter(group.resource_name); navigate('contacts'); }}
-              title={group.name}
+            {@const isSelected = selectedGroups.includes(group.resource_name)}
+            <div
+              class="nav-item label-nav-item"
+              class:active={pageView === 'contacts' && isSelected}
+              onclick={() => { toggleLabelFilter(group.resource_name); navigate('contacts'); }}
+              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLabelFilter(group.resource_name); navigate('contacts'); } }}
+              role="checkbox"
+              aria-checked={isSelected}
+              tabindex="0"
+              title="{group.name} — Click to toggle filter"
             >
-              <span class="material-symbols-outlined nav-icon" class:icon-filled={selectedGroup === group.resource_name}>
+              <span class="material-symbols-outlined nav-checkbox" class:checked={isSelected}>
+                {isSelected ? 'check_box' : 'check_box_outline_blank'}
+              </span>
+              <span class="material-symbols-outlined nav-icon" class:icon-filled={isSelected}>
                 label
               </span>
               <span class="nav-label">{group.name}</span>
               {#if group.member_count !== null && group.member_count !== undefined}
                 <span class="nav-count">{group.member_count}</span>
               {/if}
-            </button>
+              <button
+                type="button"
+                class="only-btn"
+                onclick={(e) => {
+                  e.stopPropagation();
+                  isolateLabelFilter(group.resource_name);
+                  navigate('contacts');
+                }}
+                title="Only show {group.name}"
+                aria-label="Only show {group.name}"
+              >
+                Only
+              </button>
+            </div>
           {/each}
         </div>
       {/if}
@@ -2620,14 +2728,15 @@
               {#if getContactLabelItems(detail.payload).length > 0}
                 <div class="detail-chips-row">
                   {#each getContactLabelItems(detail.payload) as lbl (lbl.resourceName)}
+                    {@const isSelected = selectedGroups.includes(lbl.resourceName)}
                     <button
                       type="button"
                       class="detail-chip"
-                      class:active={selectedGroup === lbl.resourceName}
-                      onclick={() => { selectLabelFilter(lbl.resourceName); navigate('contacts'); }}
-                      data-tooltip="Filter by label: {lbl.name}"
+                      class:active={isSelected}
+                      onclick={() => { toggleLabelFilter(lbl.resourceName); navigate('contacts'); }}
+                      data-tooltip="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
                       data-tooltip-pos="top"
-                      aria-label="Filter contacts by label: {lbl.name}"
+                      aria-label="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
                     >
                       <span class="material-symbols-outlined">label</span>
                       <span>{lbl.name}</span>
@@ -3119,24 +3228,85 @@
           </div>
         {:else}
           <!-- Main Contacts Table List View (Screenshots 1 & 3) -->
-          <div class="view-header">
-            <h1 class="view-title">
-              {#if activeGroup}
-                <span>{activeGroup.name} ({activeGroup.member_count ?? contacts.length})</span>
-                <button
-                  type="button"
-                  class="filter-clear-badge"
-                  onclick={() => selectLabelFilter(null)}
-                  title="Clear label filter (show all contacts)"
-                  aria-label="Clear label filter"
-                >
-                  <span class="material-symbols-outlined" style="font-size: 15px;">close</span>
-                  <span>Clear filter</span>
-                </button>
-              {:else}
-                Contacts ({capture ? capture.contact_count : contacts.length})
+          <div class="view-header" class:has-multi-filter={selectedGroups.length > 0}>
+            <div class="view-header-main">
+              <h1 class="view-title">
+                {#if selectedGroups.length === 0}
+                  Contacts ({capture ? capture.contact_count : contacts.length})
+                {:else if selectedGroups.length === 1}
+                  {@const singleGroup = activeGroups[0]}
+                  <span>{singleGroup?.name || '1 Label'} ({contacts.length})</span>
+                  <button
+                    type="button"
+                    class="filter-clear-badge"
+                    onclick={clearLabelFilter}
+                    title="Clear label filter (show all contacts)"
+                    aria-label="Clear label filter"
+                  >
+                    <span class="material-symbols-outlined" style="font-size: 15px;">close</span>
+                    <span>Clear filter</span>
+                  </button>
+                {:else}
+                  <span>Filtered Contacts ({contacts.length})</span>
+                  <button
+                    type="button"
+                    class="filter-clear-badge"
+                    onclick={clearLabelFilter}
+                    title="Clear all {selectedGroups.length} label filters"
+                    aria-label="Clear all label filters"
+                  >
+                    <span class="material-symbols-outlined" style="font-size: 15px;">close</span>
+                    <span>Clear all ({selectedGroups.length})</span>
+                  </button>
+                {/if}
+              </h1>
+
+              {#if selectedGroups.length > 1}
+                <div class="multi-label-bar">
+                  <div class="multi-label-chips">
+                    {#each selectedGroups as resName (resName)}
+                      {@const grp = groups.find((g) => g.resource_name === resName)}
+                      <span class="filter-pill">
+                        <span class="material-symbols-outlined filter-pill-icon">label</span>
+                        <span class="filter-pill-text">{grp?.name || resName}</span>
+                        <button
+                          type="button"
+                          class="filter-pill-remove"
+                          onclick={() => toggleLabelFilter(resName)}
+                          title="Remove {grp?.name || 'label'} from filter"
+                          aria-label="Remove {grp?.name || 'label'} from filter"
+                        >
+                          <span class="material-symbols-outlined">close</span>
+                        </button>
+                      </span>
+                    {/each}
+                  </div>
+
+                  <div class="multi-label-controls">
+                    <div class="match-mode-selector" role="radiogroup" aria-label="Label match mode">
+                      <button
+                        type="button"
+                        class="match-mode-btn"
+                        class:active={labelMatchMode === 'any'}
+                        onclick={() => { labelMatchMode = 'any'; updateDisplayedContacts(); }}
+                        title="Show contacts matching ANY selected label (OR logic)"
+                      >
+                        Match Any (OR)
+                      </button>
+                      <button
+                        type="button"
+                        class="match-mode-btn"
+                        class:active={labelMatchMode === 'all'}
+                        onclick={() => { labelMatchMode = 'all'; updateDisplayedContacts(); }}
+                        title="Show contacts matching ALL selected labels (AND logic)"
+                      >
+                        Match All (AND)
+                      </button>
+                    </div>
+                  </div>
+                </div>
               {/if}
-            </h1>
+            </div>
             <div class="view-header-actions">
               <button class="icon-btn" onclick={() => window.print()} data-tooltip="Print" aria-label="Print">
                 <span class="material-symbols-outlined">print</span>
@@ -3334,17 +3504,18 @@
                           <td class="labels-cell">
                             <div class="labels-container">
                               {#each getContactLabelItems(contact.payload) as lbl (lbl.resourceName)}
+                                {@const isSelected = selectedGroups.includes(lbl.resourceName)}
                                 <button
                                   type="button"
                                   class="label-chip"
-                                  class:active={selectedGroup === lbl.resourceName}
+                                  class:active={isSelected}
                                   onclick={(e) => {
                                     e.stopPropagation();
-                                    selectLabelFilter(selectedGroup === lbl.resourceName ? null : lbl.resourceName);
+                                    toggleLabelFilter(lbl.resourceName);
                                     navigate('contacts');
                                   }}
-                                  title="Filter contacts by label: {lbl.name}"
-                                  aria-label="Filter contacts by label: {lbl.name}"
+                                  title="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
+                                  aria-label="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
                                 >
                                   {lbl.name}
                                 </button>
@@ -3409,17 +3580,18 @@
                           <td class="labels-cell">
                             <div class="labels-container">
                               {#each getContactLabelItems(contact.payload) as lbl (lbl.resourceName)}
+                                {@const isSelected = selectedGroups.includes(lbl.resourceName)}
                                 <button
                                   type="button"
                                   class="label-chip"
-                                  class:active={selectedGroup === lbl.resourceName}
+                                  class:active={isSelected}
                                   onclick={(e) => {
                                     e.stopPropagation();
-                                    selectLabelFilter(selectedGroup === lbl.resourceName ? null : lbl.resourceName);
+                                    toggleLabelFilter(lbl.resourceName);
                                     navigate('contacts');
                                   }}
-                                  title="Filter contacts by label: {lbl.name}"
-                                  aria-label="Filter contacts by label: {lbl.name}"
+                                  title="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
+                                  aria-label="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
                                 >
                                   {lbl.name}
                                 </button>
@@ -3449,10 +3621,28 @@
                           <h3 class="empty-state-title">No matching contacts</h3>
                           <p class="empty-state-desc">No contacts matching "{search.trim()}" were found.</p>
                           <button class="action-btn" onclick={clearSearch} style="margin-top: 12px;">Clear search</button>
-                        {:else if selectedGroup}
+                        {:else if selectedGroups.length > 0}
                           <span class="material-symbols-outlined">label_off</span>
-                          <h3 class="empty-state-title">No contacts in this label</h3>
-                          <p class="empty-state-desc">There are no contacts tagged with this label in snapshot #{capture?.sequence}.</p>
+                          <h3 class="empty-state-title">No contacts match selected labels</h3>
+                          <p class="empty-state-desc">
+                            {#if selectedGroups.length === 1}
+                              There are no contacts tagged with this label in snapshot #{capture?.sequence}.
+                            {:else if labelMatchMode === 'all'}
+                              No contacts possess all {selectedGroups.length} selected labels simultaneously in snapshot #{capture?.sequence}.
+                            {:else}
+                              No contacts are tagged with any of the {selectedGroups.length} selected labels in snapshot #{capture?.sequence}.
+                            {/if}
+                          </p>
+                          <div style="display: flex; gap: 8px; justify-content: center; margin-top: 12px;">
+                            {#if selectedGroups.length > 1 && labelMatchMode === 'all'}
+                              <button class="action-btn" onclick={() => { labelMatchMode = 'any'; updateDisplayedContacts(); }}>
+                                Switch to Match ANY
+                              </button>
+                            {/if}
+                            <button class="action-btn" onclick={clearLabelFilter} style="background: var(--surface-base); color: var(--google-text); border: 1px solid var(--google-border);">
+                              Clear label filters
+                            </button>
+                          </div>
                         {:else}
                           <span class="material-symbols-outlined">people</span>
                           <h3 class="empty-state-title">No contacts found</h3>

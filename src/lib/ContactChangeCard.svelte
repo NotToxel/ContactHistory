@@ -95,7 +95,15 @@
   }
 </script>
 
-<div class="contact-change-card" class:expanded={isExpanded} class:kind-added={change.kind === 'added'} class:kind-removed={change.kind === 'removed'}>
+<div
+  class="contact-change-card"
+  class:expanded={isExpanded}
+  class:kind-added={change.kind === 'added'}
+  class:kind-removed={change.kind === 'removed'}
+  data-change-card="true"
+  data-change-res={change.resource_name}
+  data-change-name={displayName}
+>
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="change-card-main-header" onclick={() => (isExpanded = !isExpanded)}>
