@@ -1223,6 +1223,26 @@ input.search-input:focus-visible {
   overflow-y: auto;
   overflow-x: auto;
   position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: var(--google-border) transparent;
+}
+
+.table-scroll-container::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.table-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-scroll-container::-webkit-scrollbar-thumb {
+  background: var(--google-border);
+  border-radius: 5px;
+}
+
+.table-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: var(--google-text-secondary);
 }
 
 .contacts-table {
@@ -1460,7 +1480,7 @@ input.search-input:focus-visible {
 
 /* Contact Rows */
 .contact-row {
-  height: 52px;
+  height: 58px;
   border-bottom: 1px solid var(--google-border-subtle);
   cursor: pointer;
   transition: background-color 0.15s ease;
@@ -1471,7 +1491,7 @@ input.search-input:focus-visible {
 }
 
 .contact-row td {
-  padding: 8px 16px;
+  padding: 10px 16px;
   vertical-align: middle;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1699,7 +1719,7 @@ input.search-input:focus-visible {
 .contact-row td.labels-cell {
   overflow: hidden;
   max-width: 0;
-  padding: 4px 12px;
+  padding: 6px 14px;
 }
 
 .labels-container {
@@ -1710,14 +1730,14 @@ input.search-input:focus-visible {
   overflow-x: auto !important;
   overflow-y: hidden !important;
   max-width: 100% !important;
-  padding-bottom: 2px;
+  padding-bottom: 3px;
   scrollbar-width: thin;
   scrollbar-color: var(--google-border) transparent;
 }
 
 .labels-container::-webkit-scrollbar {
   display: block;
-  height: 4px;
+  height: 8px;
 }
 
 .labels-container::-webkit-scrollbar-track {
@@ -1736,14 +1756,14 @@ input.search-input:focus-visible {
 .labels-container .label-chip {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  min-height: 22px;
-  max-height: 22px;
-  padding: 0 8px;
-  border-radius: 4px;
+  height: 26px;
+  min-height: 26px;
+  max-height: 26px;
+  padding: 0 10px;
+  border-radius: 8px;
   border: 1px solid var(--google-border);
   background-color: var(--surface-base);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   font-family: inherit;
   line-height: 1;
@@ -1780,12 +1800,12 @@ input.search-input:focus-visible {
 .label-chip {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 8px;
   border: 1px solid var(--google-border);
   background-color: var(--surface-base);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   font-family: inherit;
   line-height: 1;
@@ -1817,6 +1837,120 @@ input.search-input:focus-visible {
   border-color: var(--google-blue);
   color: var(--google-blue);
   font-weight: 600;
+}
+
+/* Table Cell Content, Links, and Copy Buttons */
+.table-cell-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.table-cell-text,
+.table-cell-link {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-cell-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.table-cell-link:hover {
+  color: var(--google-blue);
+  text-decoration: underline;
+}
+
+.table-cell-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--google-text-secondary);
+  opacity: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.table-cell-copy-btn .material-symbols-outlined {
+  font-size: 15px;
+}
+
+.contact-row:hover .table-cell-copy-btn,
+.table-cell-copy-btn:focus-visible,
+.table-cell-copy-btn.copied {
+  opacity: 1;
+}
+
+.table-cell-copy-btn:hover {
+  background: var(--google-surface-hover);
+  color: var(--google-text);
+}
+
+.table-cell-copy-btn.copied {
+  opacity: 1;
+  color: var(--google-green, #1e8e3e);
+  background-color: rgba(30, 142, 62, 0.12);
+}
+
+.table-cell-copy-btn:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: 1px;
+}
+
+.table-cell-empty {
+  color: var(--google-text-tertiary);
+}
+
+/* Floating Material Design Tooltip */
+.floating-chip-tooltip {
+  position: fixed;
+  z-index: 9999;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  background-color: var(--google-text, #202124);
+  color: var(--surface-base, #ffffff);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border-radius: 6px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.24);
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  animation: chipTooltipFade 0.12s ease-out;
+}
+
+:root[data-theme="dark"] .floating-chip-tooltip {
+  background-color: #e8eaed;
+  color: #202124;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes chipTooltipFade {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% + 3px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%);
+  }
 }
 
 /* Contact Detail Full View */
@@ -4562,7 +4696,7 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   cursor: not-allowed;
 }
 
-/* ── Top Navigation Row & Persistent Tab on Scroll ───────────────────────── */
+/* ── Top Navigation Row (Frozen Row when Scrolled) ───────────────────────── */
 .detail-top-nav {
   display: flex;
   align-items: center;
@@ -4572,56 +4706,107 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   margin-inline: auto;
   margin-bottom: 20px;
   position: sticky;
-  top: 8px;
+  top: 0;
   z-index: 50;
   gap: 16px;
   box-sizing: border-box;
-  padding: 4px 0;
-  border: 1px solid transparent;
-  border-radius: 14px;
-  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, padding 0.2s ease;
+  padding: 10px 0;
+  background-color: var(--surface-base);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .detail-top-nav.is-scrolled {
+  border-bottom-color: var(--google-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="dark"] .detail-top-nav {
   background-color: var(--surface-base);
-  border-color: var(--google-border);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.10);
-  padding: 8px 16px;
-  backdrop-filter: blur(12px);
 }
 
 :root[data-theme="dark"] .detail-top-nav.is-scrolled {
-  background-color: var(--google-surface);
-  border-color: var(--google-border-subtle);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  border-bottom-color: var(--google-border-subtle);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
 .detail-top-nav-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
 
-/* Contact name next to back button - visible only when avatar is scrolled out of view */
+/* Container for small contact avatar + name next to back button */
+.detail-sticky-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1), transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+  pointer-events: none;
+}
+
+.detail-sticky-profile.visible {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* Small contact picture preview in frozen top row */
+.detail-sticky-avatar {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-size: 13px;
+  font-weight: 500;
+  color: #ffffff;
+  user-select: none;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme="dark"] .detail-sticky-avatar {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.detail-sticky-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+}
+
+.detail-sticky-avatar-img.avatar-img-failed {
+  display: none;
+}
+
+.detail-sticky-avatar-initials {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* Contact name next to avatar preview */
 .detail-sticky-name {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 500;
   color: var(--google-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0;
-  transform: translateX(-8px);
-  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1), transform 0.2s cubic-bezier(0.2, 0, 0, 1);
-  pointer-events: none;
-}
-
-.detail-sticky-name.visible {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
+  min-width: 0;
 }
 
 /* ── Three-dots "More Options" Dropdown Menu with Pop-in Animation ───────── */
@@ -4923,10 +5108,11 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
               color 0.15s ease;
 }
 
-/* Expand smoothly on hover, focus-within, or when already checked/active */
+/* Expand smoothly on hover, focus-within, or when any label is selected or item is selected */
 .label-nav-item:hover .nav-checkbox,
 .label-nav-item:focus-within .nav-checkbox,
-.label-nav-item.active .nav-checkbox,
+.sidebar-section.has-selected-labels .label-nav-item .nav-checkbox,
+.label-nav-item.is-selected .nav-checkbox,
 .label-nav-item .nav-checkbox.checked {
   width: 20px;
   max-width: 20px;
@@ -4969,136 +5155,82 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   border-color: var(--google-blue);
 }
 
-/* ── View Header Multi-Select Filter Bar ───────────────────────────────────── */
-.view-header.has-multi-filter {
-  padding-top: 14px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--google-border-subtle);
-  align-items: flex-start;
-}
-
-.view-header-main {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
-}
-
-.view-title-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.view-title {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--google-text);
-  letter-spacing: -0.1px;
-  line-height: 1.3;
-}
-
-.view-title-label {
-  font-weight: 500;
-  color: var(--google-text);
-}
-
-.view-title-count {
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--google-text-secondary);
-}
-
-.filter-clear-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 10px 0 8px;
-  border-radius: 13px;
-  border: 1px solid var(--google-border);
-  background-color: var(--surface-base);
-  color: var(--google-text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.filter-clear-badge:hover {
-  background-color: var(--google-surface-hover);
-  color: var(--google-danger);
-  border-color: var(--google-border);
-}
-
-.filter-clear-badge .clear-icon {
-  font-size: 14px;
-  line-height: 1;
-}
-
-/* Elevated Google Contacts Chips Bar */
-.multi-label-bar {
+/* ── Filter Contacts Bar (Material 3 Native) ─────────────────────────────────── */
+.filter-contacts-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 8px 12px;
-  background-color: var(--google-surface);
-  border: 1px solid var(--google-border-subtle);
-  border-radius: 8px;
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.02);
+  padding: 8px 24px;
+  background-color: var(--surface-base);
+  border-bottom: 1px solid var(--google-border);
+  animation: fadeIn 0.15s ease-out;
 }
 
-.multi-label-chips {
+.filter-bar-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.filter-bar-lead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--google-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.filter-funnel-icon {
+  font-size: 18px;
+  color: var(--google-blue);
+}
+
+.filter-bar-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--google-text);
+}
+
+.filter-chips-list {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.filter-pill {
+.filter-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 28px;
   padding: 0 8px 0 10px;
-  background-color: var(--google-blue-surface);
-  border: 1px solid var(--google-blue-pill);
   border-radius: 14px;
+  background-color: var(--google-blue-surface);
+  border: 1px solid var(--google-blue);
+  color: var(--google-blue);
   font-size: 12px;
   font-weight: 500;
-  color: var(--google-blue-hover);
   max-width: 240px;
-  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: all 0.15s ease;
 }
 
-.filter-pill:hover {
-  background-color: #dbe8fe;
-  border-color: var(--google-blue);
-}
-
-.filter-pill-icon {
+.filter-chip-icon {
   font-size: 15px;
   color: var(--google-blue);
   flex-shrink: 0;
 }
 
-.filter-pill-text {
+.filter-chip-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
 }
 
-.filter-pill-remove {
+.filter-chip-remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5111,43 +5243,38 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   cursor: pointer;
   padding: 0;
   margin-left: 2px;
-  transition: background-color 0.15s, color 0.15s, transform 0.1s;
+  transition: all 0.15s ease;
   flex-shrink: 0;
 }
 
-.filter-pill-remove span {
+.filter-chip-remove span {
   font-size: 14px;
   line-height: 1;
 }
 
-.filter-pill-remove:hover {
-  background-color: rgba(24, 90, 188, 0.2);
-  color: var(--google-danger);
-  transform: scale(1.1);
+.filter-chip-remove:hover {
+  background-color: rgba(26, 115, 232, 0.25);
+  color: var(--google-red, #d93025);
 }
 
-.multi-label-controls {
+.filter-bar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-left: auto;
 }
 
-.match-mode-selector {
+.match-mode-segmented-control {
   display: inline-flex;
   align-items: center;
-  background-color: var(--surface-base);
+  background-color: var(--google-surface-hover);
   border: 1px solid var(--google-border);
   border-radius: 16px;
   padding: 2px;
   gap: 2px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.match-mode-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.match-mode-segmented-control .segmented-btn {
   background: transparent;
   border: none;
   border-radius: 14px;
@@ -5157,100 +5284,363 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   font-family: inherit;
   color: var(--google-text-secondary);
   cursor: pointer;
-  transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
+  transition: all 0.15s ease;
   white-space: nowrap;
 }
 
-.match-mode-btn .match-btn-icon {
-  font-size: 14px;
-  line-height: 1;
-  opacity: 0.8;
+.match-mode-segmented-control .segmented-btn.active {
+  background-color: var(--surface-base);
+  color: var(--google-blue);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
-.match-mode-btn.active {
+.filter-clear-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border-radius: 14px;
+  border: 1px solid var(--google-border);
+  background-color: var(--surface-base);
+  color: var(--google-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-clear-all-btn span {
+  font-size: 15px;
+}
+
+.filter-clear-all-btn:hover {
+  background-color: var(--google-surface-hover);
+  color: var(--google-red, #d93025);
+  border-color: currentColor;
+}
+
+/* ── Table Selection Header Row (Screenshot media_1789747959902.png) ─────────── */
+.table-selection-row {
+  background-color: var(--surface-base);
+  border-bottom: 1px solid var(--google-border);
+  height: 48px;
+}
+
+.table-selection-th {
+  padding: 0 16px 0 16px !important;
+  height: 48px;
+  font-weight: normal;
+  text-align: left;
+}
+
+.table-selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+}
+
+.selection-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.selection-box-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.selection-master-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: none;
   background-color: var(--google-blue);
   color: #ffffff;
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(24, 90, 188, 0.35);
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.15s ease;
 }
 
-.match-mode-btn.active .match-btn-icon {
-  opacity: 1;
+.selection-master-checkbox .material-symbols-outlined {
+  font-size: 16px;
+  font-weight: bold;
+  line-height: 1;
   color: #ffffff;
 }
 
-.match-mode-btn:hover:not(.active) {
+.selection-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--google-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.selection-dropdown-trigger:hover {
+  background-color: var(--google-surface-hover);
   color: var(--google-text);
+}
+
+.selection-dropdown-trigger .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.selection-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--surface-base);
+  border: 1px solid var(--google-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  min-width: 110px;
+  z-index: 210;
+  padding: 4px 0;
+  animation: fadeIn 0.12s ease-out;
+}
+
+.selection-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--google-text);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.selection-dropdown-item:hover {
   background-color: var(--google-surface-hover);
 }
 
+.selection-count-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--google-blue);
+  letter-spacing: 0.1px;
+  user-select: none;
+}
+
+.selection-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.selection-action-btn {
+  color: var(--google-text-secondary);
+}
+
+.selection-action-btn:hover {
+  color: var(--google-text);
+}
+
+.selection-download-wrapper {
+  position: relative;
+}
+
+/* ── Contact Row Selection & Avatar-to-Checkbox ───────────────────────────── */
+.contact-row.is-selected {
+  background-color: #d3e3fd !important;
+}
+
+:root[data-theme="dark"] .contact-row.is-selected {
+  background-color: rgba(138, 180, 248, 0.18) !important;
+}
+
+.avatar-select-container {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.avatar-select-container .avatar-circle {
+  position: absolute;
+  inset: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 1;
+}
+
+.avatar-select-container .contact-select-checkbox {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.8);
+  transition: opacity 0.15s ease, transform 0.15s ease, background-color 0.12s ease;
+  border: 2px solid var(--google-text-secondary);
+  background-color: var(--surface-base);
+  z-index: 2;
+  box-sizing: border-box;
+}
+
+.avatar-select-container .contact-select-checkbox .material-symbols-outlined {
+  font-size: 15px;
+  font-weight: bold;
+  line-height: 1;
+  color: #ffffff;
+}
+
+/* On hover of row or container, hide avatar and show checkbox */
+.contact-row:hover .avatar-select-container .avatar-circle,
+.avatar-select-container:hover .avatar-circle,
+.avatar-select-container:focus-visible .avatar-circle {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85);
+}
+
+.contact-row:hover .avatar-select-container .contact-select-checkbox,
+.avatar-select-container:hover .contact-select-checkbox,
+.avatar-select-container:focus-visible .contact-select-checkbox {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+/* When contact is selected, keep avatar hidden and checkbox active/checked */
+.contact-row.is-selected .avatar-select-container .avatar-circle {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85);
+}
+
+.contact-row.is-selected .avatar-select-container .contact-select-checkbox,
+.avatar-select-container .contact-select-checkbox.checked {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+  background-color: var(--google-blue);
+  border-color: var(--google-blue);
+  color: #ffffff;
+}
+
 /* Dark Mode Harmonization */
-:root[data-theme="dark"] .multi-label-bar {
-  background-color: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.08);
+:root[data-theme="dark"] .filter-contacts-bar {
+  background-color: var(--surface-base);
+  border-color: var(--google-border);
 }
 
-:root[data-theme="dark"] .filter-pill {
+:root[data-theme="dark"] .filter-chip {
   background-color: rgba(26, 115, 232, 0.18);
-  border-color: rgba(138, 180, 248, 0.4);
-  color: var(--google-blue-pill);
+  border-color: rgba(138, 180, 248, 0.45);
+  color: var(--google-blue);
 }
 
-:root[data-theme="dark"] .filter-pill:hover {
-  background-color: rgba(26, 115, 232, 0.28);
+:root[data-theme="dark"] .filter-chip-remove {
+  color: var(--google-blue);
 }
 
-:root[data-theme="dark"] .filter-pill-remove {
-  color: var(--google-blue-pill);
-}
-
-:root[data-theme="dark"] .filter-clear-badge {
+:root[data-theme="dark"] .filter-clear-all-btn {
   background-color: var(--google-surface);
   border-color: var(--google-border);
   color: var(--google-text-secondary);
 }
 
-:root[data-theme="dark"] .filter-clear-badge:hover {
+:root[data-theme="dark"] .filter-clear-all-btn:hover {
   background-color: var(--google-surface-hover);
   color: #f28b82;
   border-color: #f28b82;
 }
 
-:root[data-theme="dark"] .match-mode-selector {
+:root[data-theme="dark"] .match-mode-segmented-control {
   background-color: var(--google-surface);
   border-color: var(--google-border);
 }
 
-:root[data-theme="dark"] .label-nav-item .only-btn {
-  background: var(--google-surface);
+:root[data-theme="dark"] .table-selection-row {
+  background-color: var(--surface-base);
   border-color: var(--google-border);
 }
 
-/* Compact Density Harmonization */
-:root[data-density="compact"] .view-header.has-multi-filter {
-  padding-top: 10px;
-  padding-bottom: 10px;
+:root[data-theme="dark"] .selection-dropdown-menu {
+  background-color: var(--surface-base);
+  border-color: var(--google-border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
 }
 
-:root[data-density="compact"] .multi-label-bar {
-  padding: 6px 10px;
+:root[data-theme="dark"] .avatar-select-container .contact-select-checkbox {
+  background-color: var(--surface-base);
+  border-color: var(--google-text-secondary);
+}
+
+/* Compact Density Harmonization */
+:root[data-density="compact"] .filter-contacts-bar {
+  padding: 6px 16px;
   gap: 8px;
 }
 
-:root[data-density="compact"] .filter-pill {
+:root[data-density="compact"] .filter-chip {
   height: 24px;
   padding: 0 6px 0 8px;
   font-size: 11px;
 }
 
-:root[data-density="compact"] .match-mode-btn {
+:root[data-density="compact"] .match-mode-segmented-control .segmented-btn {
   padding: 2px 8px;
   font-size: 10.5px;
 }
 
-:root[data-density="compact"] .label-nav-item .only-btn {
-  padding: 1px 5px;
-  font-size: 10px;
+:root[data-density="compact"] .table-selection-row {
+  height: 40px;
+}
+
+:root[data-density="compact"] .table-selection-th {
+  height: 40px;
+}
+
+:root[data-density="compact"] .avatar-select-container {
+  width: 28px;
+  height: 28px;
+}
+
+:root[data-density="compact"] .avatar-select-container .avatar-circle {
+  width: 28px;
+  height: 28px;
+}
+
+:root[data-density="compact"] .avatar-select-container .contact-select-checkbox {
+  width: 16px;
+  height: 16px;
 }
 
 

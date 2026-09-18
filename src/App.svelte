@@ -1965,6 +1965,7 @@
       }
     } catch (e) {
       error = String(e);
+    }
   }
 
   function toggleContactSelection(resName: string, event?: MouseEvent) {
@@ -3560,9 +3561,28 @@
                 <button class="icon-btn" onclick={() => detail = undefined} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
                   <span class="material-symbols-outlined">arrow_back</span>
                 </button>
-                <span class="detail-sticky-name" class:visible={showStickyName} title={getDisplayName(detail)}>
-                  {getDisplayName(detail)}
-                </span>
+                <div class="detail-sticky-profile" class:visible={showStickyName}>
+                  <div
+                    class="detail-sticky-avatar"
+                    style="background-color: {getAvatarColor(getDisplayName(detail))};"
+                    aria-hidden="true"
+                  >
+                    {#if getAvatarSource(detail, media)}
+                      <img
+                        src={getAvatarSource(detail, media)}
+                        alt=""
+                        class="detail-sticky-avatar-img"
+                        referrerpolicy="no-referrer"
+                        onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                        onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
+                      />
+                    {/if}
+                    <span class="detail-sticky-avatar-initials">{getInitials(getDisplayName(detail))}</span>
+                  </div>
+                  <span class="detail-sticky-name" title={getDisplayName(detail)}>
+                    {getDisplayName(detail)}
+                  </span>
+                </div>
               </div>
               <div class="detail-nav-actions">
                 {#if isFavourite(detail)}
@@ -4383,7 +4403,155 @@
           <div class="table-scroll-container">
             <table class="contacts-table">
               <thead>
-                <tr>
+                {#if selectedContactKeys.length > 0}
+                  <tr class="table-selection-row">
+                    <th colspan={activeColKeys.length} class="table-selection-th">
+                      <div class="table-selection-toolbar">
+                        <div class="selection-toolbar-left">
+                          <div class="selection-box-wrapper">
+                            <button
+                              type="button"
+                              class="selection-master-checkbox"
+                              onclick={toggleSelectAll}
+                              title={isAllSelected ? 'Deselect all' : 'Select all'}
+                              aria-label={isAllSelected ? 'Deselect all' : 'Select all'}
+                            >
+                              <span class="material-symbols-outlined">
+                                {isIndeterminate ? 'remove' : 'check'}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              class="selection-dropdown-trigger"
+                              onclick={(e) => { e.stopPropagation(); showSelectionMenu = !showSelectionMenu; }}
+                              title="Selection options"
+                              aria-label="Selection options"
+                              aria-expanded={showSelectionMenu}
+                            >
+                              <span class="material-symbols-outlined">arrow_drop_down</span>
+                            </button>
+                            {#if showSelectionMenu}
+                              <div class="selection-dropdown-menu" role="menu">
+                                <button
+                                  type="button"
+                                  class="selection-dropdown-item"
+                                  onclick={() => { selectAllVisible(); showSelectionMenu = false; }}
+                                  role="menuitem"
+                                >
+                                  All
+                                </button>
+                                <button
+                                  type="button"
+                                  class="selection-dropdown-item"
+                                  onclick={() => { clearContactSelection(); showSelectionMenu = false; }}
+                                  role="menuitem"
+                                >
+                                  None
+                                </button>
+                              </div>
+                            {/if}
+                          </div>
+                          <span class="selection-count-label">
+                            {selectedContactKeys.length} selected
+                          </span>
+                        </div>
+
+                        <div class="selection-toolbar-actions">
+                          <button
+                            type="button"
+                            class="icon-btn selection-action-btn"
+                            onclick={sendEmailToSelected}
+                            data-tooltip="Send email in new window"
+                            aria-label="Send email in new window"
+                          >
+                            <span class="material-symbols-outlined">mail</span>
+                          </button>
+                          <button
+                            type="button"
+                            class="icon-btn selection-action-btn"
+                            onclick={openPhotoExport}
+                            data-tooltip="Export Contact Photos"
+                            aria-label="Export Contact Photos"
+                          >
+                            <span class="material-symbols-outlined">photo_library</span>
+                          </button>
+                          <div class="selection-download-wrapper">
+                            <button
+                              type="button"
+                              class="icon-btn selection-action-btn"
+                              class:active={showDownloadMenu}
+                              onclick={(e) => { e.stopPropagation(); showDownloadMenu = !showDownloadMenu; }}
+                              data-tooltip="Download contacts"
+                              aria-label="Download contacts"
+                              aria-expanded={showDownloadMenu}
+                            >
+                              <span class="material-symbols-outlined">download</span>
+                            </button>
+                            {#if showDownloadMenu}
+                              <div class="selection-download-menu" role="menu">
+                                <button
+                                  type="button"
+                                  class="selection-menu-item"
+                                  onclick={() => { downloadSelectedVcf(); showDownloadMenu = false; }}
+                                  role="menuitem"
+                                >
+                                  <span class="material-symbols-outlined">contact_page</span>
+                                  <div class="menu-item-text">
+                                    <span class="menu-item-title">vCard format (.vcf)</span>
+                                    <span class="menu-item-subtitle">For Apple Contacts, Outlook, iOS & Android</span>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  class="selection-menu-item"
+                                  onclick={() => { downloadSelectedCsv(); showDownloadMenu = false; }}
+                                  role="menuitem"
+                                >
+                                  <span class="material-symbols-outlined">table_chart</span>
+                                  <div class="menu-item-text">
+                                    <span class="menu-item-title">Google CSV (.csv)</span>
+                                    <span class="menu-item-subtitle">For importing into Google Contacts</span>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  class="selection-menu-item"
+                                  onclick={() => { downloadSelectedJson(); showDownloadMenu = false; }}
+                                  role="menuitem"
+                                >
+                                  <span class="material-symbols-outlined">data_object</span>
+                                  <div class="menu-item-text">
+                                    <span class="menu-item-title">JSON format (.json)</span>
+                                    <span class="menu-item-subtitle">Raw snapshot payload</span>
+                                  </div>
+                                </button>
+                              </div>
+                            {/if}
+                          </div>
+                          <button
+                            type="button"
+                            class="icon-btn selection-action-btn"
+                            onclick={() => window.print()}
+                            data-tooltip="Print"
+                            aria-label="Print"
+                          >
+                            <span class="material-symbols-outlined">print</span>
+                          </button>
+                          <button
+                            type="button"
+                            class="icon-btn selection-action-btn"
+                            onclick={clearContactSelection}
+                            data-tooltip="Clear selection"
+                            aria-label="Clear selection"
+                          >
+                            <span class="material-symbols-outlined">close</span>
+                          </button>
+                        </div>
+                      </div>
+                    </th>
+                  </tr>
+                {:else}
+                  <tr>
                   {#each activeColKeys as colKey}
                     {@const colDef = ALL_COLUMNS.find((c) => c.key === colKey)!}
                     <th style="width: {colWidths[colKey]}px;" class={colKey === 'name' ? 'th-name-col' : ''}>
@@ -4494,6 +4662,7 @@
                     </th>
                   {/each}
                 </tr>
+                {/if}
               </thead>
               <tbody>
                 {#if favouriteContacts.length > 0}
@@ -4506,39 +4675,185 @@
                     </td>
                   </tr>
                   {#each favouriteContacts as contact (contact.resource_name)}
-                    <tr class="contact-row" data-contact-res={contact.resource_name} onclick={() => selectContact(contact)}>
+                    <tr
+                      class="contact-row"
+                      class:is-selected={selectedContactKeys.includes(contact.resource_name)}
+                      data-contact-res={contact.resource_name}
+                      onclick={() => selectContact(contact)}
+                    >
                       {#each activeColKeys as colKey}
                         {#if colKey === 'name'}
                           <td>
                             <div class="name-cell-content">
-                              <div class="avatar-circle" style="background-color: {getAvatarColor(getDisplayName(contact))}; color: #ffffff;">
-                                {#if getAvatarSource(contact)}
-                                  <img
-                                    src={getAvatarSource(contact)}
-                                    alt={getDisplayName(contact)}
-                                    class="avatar-img"
-                                    loading="lazy"
-                                    referrerpolicy="no-referrer"
-                                    onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
-                                    onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
-                                  />
-                                {/if}
-                                <span>{getInitials(getDisplayName(contact))}</span>
+                              <div
+                                class="avatar-select-container"
+                                onclick={(e) => toggleContactSelection(contact.resource_name, e)}
+                                onkeydown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    toggleContactSelection(contact.resource_name);
+                                  }
+                                }}
+                                role="checkbox"
+                                aria-checked={selectedContactKeys.includes(contact.resource_name)}
+                                tabindex="0"
+                                title={selectedContactKeys.includes(contact.resource_name) ? "Deselect contact" : "Select contact"}
+                              >
+                                <div class="avatar-circle" style="background-color: {getAvatarColor(getDisplayName(contact))}; color: #ffffff;">
+                                  {#if getAvatarSource(contact)}
+                                    <img
+                                      src={getAvatarSource(contact)}
+                                      alt={getDisplayName(contact)}
+                                      class="avatar-img"
+                                      loading="lazy"
+                                      referrerpolicy="no-referrer"
+                                      onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                                      onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
+                                    />
+                                  {/if}
+                                  <span>{getInitials(getDisplayName(contact))}</span>
+                                </div>
+                                <div class="contact-select-checkbox" class:checked={selectedContactKeys.includes(contact.resource_name)}>
+                                  <span class="material-symbols-outlined">
+                                    {selectedContactKeys.includes(contact.resource_name) ? 'check' : ''}
+                                  </span>
+                                </div>
                               </div>
                               <span class="name-text">{getDisplayName(contact)}</span>
                             </div>
                           </td>
                         {:else if colKey === 'job'}
                           {@const jobInfo = getOrganization(contact.payload)}
-                          <td title={[jobInfo.title, jobInfo.org].filter(Boolean).join(' • ')}>
-                            {[jobInfo.title, jobInfo.org].filter(Boolean).join(' • ') || '-'}
+                          {@const jobText = [jobInfo.title, jobInfo.org].filter(Boolean).join(' • ')}
+                          {@const cellKey = `table-${contact.resource_name}-job`}
+                          <td title={jobText}>
+                            {#if jobText}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{jobText}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, jobText);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy job info'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy job info"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
                           </td>
                         {:else if colKey === 'email'}
-                          <td>{getPrimaryEmail(contact.payload)}</td>
+                          {@const email = getPrimaryEmail(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-email`}
+                          <td>
+                            {#if email}
+                              <div class="table-cell-content">
+                                <a
+                                  href="mailto:{email}"
+                                  class="table-cell-link"
+                                  onclick={(e) => e.stopPropagation()}
+                                  data-tooltip="Send email"
+                                  data-tooltip-pos="top"
+                                  aria-label="Send email to {email}"
+                                >
+                                  {email}
+                                </a>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, email);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy email'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy email"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'phone'}
-                          <td>{getPrimaryPhone(contact.payload)}</td>
+                          {@const phone = getPrimaryPhone(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-phone`}
+                          <td>
+                            {#if phone}
+                              <div class="table-cell-content">
+                                <a
+                                  href="tel:{phone}"
+                                  class="table-cell-link"
+                                  onclick={(e) => e.stopPropagation()}
+                                  data-tooltip="Call number"
+                                  data-tooltip-pos="top"
+                                  aria-label="Call {phone}"
+                                >
+                                  {phone}
+                                </a>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, phone);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy phone'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy phone"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'birthday'}
-                          <td>{getBirthday(contact.payload)}</td>
+                          {@const bday = getBirthday(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-birthday`}
+                          <td>
+                            {#if bday}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{bday}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, bday);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy birthday'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy birthday"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'labels'}
                           <td class="labels-cell">
                             <div class="labels-container">
@@ -4553,7 +4868,9 @@
                                     toggleLabelFilter(lbl.resourceName);
                                     navigate('contacts');
                                   }}
-                                  title="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
+                                  onmouseenter={(e) => showChipTooltip(e, isSelected ? `Remove filter: ${lbl.name}` : `Filter by label: ${lbl.name}`)}
+                                  onmouseleave={hideChipTooltip}
+                                  onblur={hideChipTooltip}
                                   aria-label="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
                                 >
                                   {lbl.name}
@@ -4562,13 +4879,130 @@
                             </div>
                           </td>
                         {:else if colKey === 'org'}
-                          <td>{getOrganization(contact.payload).org}</td>
+                          {@const org = getOrganization(contact.payload).org}
+                          {@const cellKey = `table-${contact.resource_name}-org`}
+                          <td>
+                            {#if org}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{org}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, org);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy company'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy company"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'title'}
-                          <td>{getOrganization(contact.payload).title}</td>
+                          {@const title = getOrganization(contact.payload).title}
+                          {@const cellKey = `table-${contact.resource_name}-title`}
+                          <td>
+                            {#if title}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{title}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, title);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy job title'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy job title"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'address'}
-                          <td>{getPrimaryAddress(contact.payload)}</td>
+                          {@const addr = getPrimaryAddress(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-address`}
+                          <td>
+                            {#if addr}
+                              <div class="table-cell-content">
+                                <a
+                                  href={getMapsUrlFromAddress(addr)}
+                                  class="table-cell-link"
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    api.openExternalUrl(getMapsUrlFromAddress(addr));
+                                  }}
+                                  data-tooltip="Open in Google Maps"
+                                  data-tooltip-pos="top"
+                                  aria-label="Open in Google Maps: {addr}"
+                                >
+                                  {addr}
+                                </a>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, addr);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy address'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy address"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'notes'}
-                          <td>{getNotes(contact.payload)}</td>
+                          {@const notes = getNotes(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-notes`}
+                          <td>
+                            {#if notes}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{notes}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, notes);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy notes'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy notes"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {/if}
                       {/each}
                     </tr>
@@ -4582,39 +5016,185 @@
                     </td>
                   </tr>
                   {#each otherContacts as contact (contact.resource_name)}
-                    <tr class="contact-row" data-contact-res={contact.resource_name} onclick={() => selectContact(contact)}>
+                    <tr
+                      class="contact-row"
+                      class:is-selected={selectedContactKeys.includes(contact.resource_name)}
+                      data-contact-res={contact.resource_name}
+                      onclick={() => selectContact(contact)}
+                    >
                       {#each activeColKeys as colKey}
                         {#if colKey === 'name'}
                           <td>
                             <div class="name-cell-content">
-                              <div class="avatar-circle" style="background-color: {getAvatarColor(getDisplayName(contact))}; color: #ffffff;">
-                                {#if getAvatarSource(contact)}
-                                  <img
-                                    src={getAvatarSource(contact)}
-                                    alt={getDisplayName(contact)}
-                                    class="avatar-img"
-                                    loading="lazy"
-                                    referrerpolicy="no-referrer"
-                                    onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
-                                    onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
-                                  />
-                                {/if}
-                                <span>{getInitials(getDisplayName(contact))}</span>
+                              <div
+                                class="avatar-select-container"
+                                onclick={(e) => toggleContactSelection(contact.resource_name, e)}
+                                onkeydown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    toggleContactSelection(contact.resource_name);
+                                  }
+                                }}
+                                role="checkbox"
+                                aria-checked={selectedContactKeys.includes(contact.resource_name)}
+                                tabindex="0"
+                                title={selectedContactKeys.includes(contact.resource_name) ? "Deselect contact" : "Select contact"}
+                              >
+                                <div class="avatar-circle" style="background-color: {getAvatarColor(getDisplayName(contact))}; color: #ffffff;">
+                                  {#if getAvatarSource(contact)}
+                                    <img
+                                      src={getAvatarSource(contact)}
+                                      alt={getDisplayName(contact)}
+                                      class="avatar-img"
+                                      loading="lazy"
+                                      referrerpolicy="no-referrer"
+                                      onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                                      onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
+                                    />
+                                  {/if}
+                                  <span>{getInitials(getDisplayName(contact))}</span>
+                                </div>
+                                <div class="contact-select-checkbox" class:checked={selectedContactKeys.includes(contact.resource_name)}>
+                                  <span class="material-symbols-outlined">
+                                    {selectedContactKeys.includes(contact.resource_name) ? 'check' : ''}
+                                  </span>
+                                </div>
                               </div>
                               <span class="name-text">{getDisplayName(contact)}</span>
                             </div>
                           </td>
                         {:else if colKey === 'job'}
                           {@const jobInfo = getOrganization(contact.payload)}
-                          <td title={[jobInfo.title, jobInfo.org].filter(Boolean).join(' • ')}>
-                            {[jobInfo.title, jobInfo.org].filter(Boolean).join(' • ') || '-'}
+                          {@const jobText = [jobInfo.title, jobInfo.org].filter(Boolean).join(' • ')}
+                          {@const cellKey = `table-${contact.resource_name}-job`}
+                          <td title={jobText}>
+                            {#if jobText}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{jobText}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, jobText);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy job info'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy job info"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
                           </td>
                         {:else if colKey === 'email'}
-                          <td>{getPrimaryEmail(contact.payload)}</td>
+                          {@const email = getPrimaryEmail(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-email`}
+                          <td>
+                            {#if email}
+                              <div class="table-cell-content">
+                                <a
+                                  href="mailto:{email}"
+                                  class="table-cell-link"
+                                  onclick={(e) => e.stopPropagation()}
+                                  data-tooltip="Send email"
+                                  data-tooltip-pos="top"
+                                  aria-label="Send email to {email}"
+                                >
+                                  {email}
+                                </a>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, email);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy email'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy email"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'phone'}
-                          <td>{getPrimaryPhone(contact.payload)}</td>
+                          {@const phone = getPrimaryPhone(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-phone`}
+                          <td>
+                            {#if phone}
+                              <div class="table-cell-content">
+                                <a
+                                  href="tel:{phone}"
+                                  class="table-cell-link"
+                                  onclick={(e) => e.stopPropagation()}
+                                  data-tooltip="Call number"
+                                  data-tooltip-pos="top"
+                                  aria-label="Call {phone}"
+                                >
+                                  {phone}
+                                </a>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, phone);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy phone'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy phone"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'birthday'}
-                          <td>{getBirthday(contact.payload)}</td>
+                          {@const bday = getBirthday(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-birthday`}
+                          <td>
+                            {#if bday}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{bday}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, bday);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy birthday'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy birthday"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'labels'}
                           <td class="labels-cell">
                             <div class="labels-container">
@@ -4629,7 +5209,9 @@
                                     toggleLabelFilter(lbl.resourceName);
                                     navigate('contacts');
                                   }}
-                                  title="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
+                                  onmouseenter={(e) => showChipTooltip(e, isSelected ? `Remove filter: ${lbl.name}` : `Filter by label: ${lbl.name}`)}
+                                  onmouseleave={hideChipTooltip}
+                                  onblur={hideChipTooltip}
                                   aria-label="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
                                 >
                                   {lbl.name}
@@ -4638,13 +5220,130 @@
                             </div>
                           </td>
                         {:else if colKey === 'org'}
-                          <td>{getOrganization(contact.payload).org}</td>
+                          {@const org = getOrganization(contact.payload).org}
+                          {@const cellKey = `table-${contact.resource_name}-org`}
+                          <td>
+                            {#if org}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{org}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, org);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy company'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy company"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'title'}
-                          <td>{getOrganization(contact.payload).title}</td>
+                          {@const title = getOrganization(contact.payload).title}
+                          {@const cellKey = `table-${contact.resource_name}-title`}
+                          <td>
+                            {#if title}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{title}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, title);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy job title'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy job title"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'address'}
-                          <td>{getPrimaryAddress(contact.payload)}</td>
+                          {@const addr = getPrimaryAddress(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-address`}
+                          <td>
+                            {#if addr}
+                              <div class="table-cell-content">
+                                <a
+                                  href={getMapsUrlFromAddress(addr)}
+                                  class="table-cell-link"
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    api.openExternalUrl(getMapsUrlFromAddress(addr));
+                                  }}
+                                  data-tooltip="Open in Google Maps"
+                                  data-tooltip-pos="top"
+                                  aria-label="Open in Google Maps: {addr}"
+                                >
+                                  {addr}
+                                </a>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, addr);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy address'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy address"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {:else if colKey === 'notes'}
-                          <td>{getNotes(contact.payload)}</td>
+                          {@const notes = getNotes(contact.payload)}
+                          {@const cellKey = `table-${contact.resource_name}-notes`}
+                          <td>
+                            {#if notes}
+                              <div class="table-cell-content">
+                                <span class="table-cell-text">{notes}</span>
+                                <button
+                                  type="button"
+                                  class="table-cell-copy-btn"
+                                  class:copied={copiedFieldKey === cellKey}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    copyFieldValue(cellKey, notes);
+                                  }}
+                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy notes'}
+                                  data-tooltip-pos="top"
+                                  aria-label="Copy notes"
+                                >
+                                  <span class="material-symbols-outlined">
+                                    {copiedFieldKey === cellKey ? 'check' : 'content_copy'}
+                                  </span>
+                                </button>
+                              </div>
+                            {:else}
+                              <span class="table-cell-empty">-</span>
+                            {/if}
+                          </td>
                         {/if}
                       {/each}
                     </tr>
@@ -4895,6 +5594,7 @@
                 {change}
                 labels={groupMap}
                 avatarUrl={getAvatarSource({ resource_name: change.resource_name, display_name: '', payload: change.after || change.before || {}, version: change.version }, media)}
+                birthdayFormat={preferences.birthdayFormat}
               />
             {/each}
 
@@ -5069,6 +5769,7 @@
                             avatarUrl={getAvatarSource({ resource_name: item.resource_name, display_name: '', payload: item.after || item.before || {}, version: item.version }, media)}
                             showSnapshotBadge={false}
                             committedAt={item.committed_at}
+                            birthdayFormat={preferences.birthdayFormat}
                           />
                         {/each}
                       </div>
@@ -5498,6 +6199,21 @@
                     value={nameSortDirection}
                     onchange={(v) => setSortDirection(v as 'asc' | 'desc')}
                     ariaLabel="Name sort order"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Birthday format</span>
+                  <span class="setting-row-desc">Choose how birthdays are displayed across the table, contact details, and changes.</span>
+                </div>
+                <div class="setting-row-control">
+                  <CustomSelect
+                    options={birthdayFormatOptions}
+                    value={preferences.birthdayFormat}
+                    onchange={(v) => updatePreferences({ birthdayFormat: v as BirthdayFormat })}
+                    ariaLabel="Birthday format"
                   />
                 </div>
               </div>
@@ -6010,6 +6726,17 @@
           {photoInfoTooltip.text}
         </div>
       {/if}
+    </div>
+  {/if}
+
+  <!-- Floating Material Design Tooltip for Label Chips -->
+  {#if activeChipTooltip}
+    <div
+      class="floating-chip-tooltip"
+      style="left: {activeChipTooltip.x}px; top: {activeChipTooltip.y}px;"
+      role="tooltip"
+    >
+      {activeChipTooltip.text}
     </div>
   {/if}
 

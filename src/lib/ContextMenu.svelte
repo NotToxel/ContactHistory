@@ -5,31 +5,20 @@
   const menu = $derived(contextMenuManager.state);
 
   let menuEl = $state<HTMLElement | null>(null);
-  let adjustedX = $state(0);
-  let adjustedY = $state(0);
   let focusedIndex = $state(-1);
+  let measuredOffset = $state<{ x: number; y: number } | null>(null);
+
+  // Derive active position immediately from menu.x/y so it is NEVER (0, 0)
+  const displayX = $derived(measuredOffset ? measuredOffset.x : menu.x);
+  const displayY = $derived(measuredOffset ? measuredOffset.y : menu.y);
 
   $effect(() => {
     if (menu.isOpen) {
       focusedIndex = -1;
+      measuredOffset = null;
       const pad = 10;
-      const estWidth = 240;
-      const estHeight = Math.min(420, (menu.items.length * 36) + (menu.header ? 55 : 12));
 
-      let x = menu.x;
-      let y = menu.y;
-
-      if (x + estWidth > window.innerWidth - pad) {
-        x = Math.max(pad, window.innerWidth - estWidth - pad);
-      }
-      if (y + estHeight > window.innerHeight - pad) {
-        y = Math.max(pad, window.innerHeight - estHeight - pad);
-      }
-
-      adjustedX = x;
-      adjustedY = y;
-
-      // Refine with actual element bounding box once rendered
+      // Fine-tune viewport boundaries against actual measured bounding box
       tick().then(() => {
         if (!menuEl) return;
         const rect = menuEl.getBoundingClientRect();
@@ -43,9 +32,10 @@
           ry = Math.max(pad, window.innerHeight - rect.height - pad);
         }
 
-        adjustedX = rx;
-        adjustedY = ry;
+        measuredOffset = { x: rx, y: ry };
       });
+    } else {
+      measuredOffset = null;
     }
   });
 
@@ -139,7 +129,7 @@
   <div
     bind:this={menuEl}
     class="custom-context-menu"
-    style="left: {adjustedX}px; top: {adjustedY}px;"
+    style="left: {displayX}px; top: {displayY}px;"
     role="menu"
     tabindex="-1"
     aria-orientation="vertical"
@@ -196,6 +186,7 @@
   .custom-context-menu {
     position: fixed !important;
     z-index: 99999 !important;
+    margin: 0 !important;
     min-width: 220px;
     max-width: 320px;
     background-color: var(--surface-base, #ffffff);
@@ -206,6 +197,7 @@
     padding: 6px 0;
     user-select: none;
     outline: none;
+    transform-origin: top left;
     font-family: var(--font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
     animation: contextMenuPopIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
     backdrop-filter: blur(12px);

@@ -2,6 +2,7 @@
   import { computeContactDiff, extractDisplayName } from './diff';
   import { computeJsonDiff, type JsonDiffResult } from './json-diff';
   import type { Change } from './ipc';
+  import type { BirthdayFormat } from './preferences';
 
   let {
     change,
@@ -11,6 +12,7 @@
     showSnapshotBadge = false,
     snapshotSeq = null,
     committedAt = '',
+    birthdayFormat = 'day-month-year',
   }: {
     change: Change;
     labels?: Map<string, string>;
@@ -19,6 +21,7 @@
     showSnapshotBadge?: boolean;
     snapshotSeq?: number | null;
     committedAt?: string;
+    birthdayFormat?: BirthdayFormat;
   } = $props();
 
   let isExpanded = $state(false);
@@ -30,7 +33,7 @@
   let copiedJson = $state(false);
   let copiedDiff = $state(false);
 
-  const diff = $derived(computeContactDiff(change.before, change.after, labels));
+  const diff = $derived(computeContactDiff(change.before, change.after, labels, birthdayFormat));
   const displayName = $derived(diff.displayName || change.resource_name);
   const jsonDiff = $derived<JsonDiffResult>(
     computeJsonDiff(
