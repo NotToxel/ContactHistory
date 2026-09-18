@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, time::Duration};
 use uuid::Uuid;
@@ -106,13 +106,25 @@ impl Store {
         Ok(db)
     }
     pub fn verify(&self, account: &Account, db: &Connection) -> Result<()> {
-        let subject: String = db.query_row(
-            "SELECT provider_subject FROM account_metadata WHERE id=1",
-            [],
-            |r| r.get(0),
-        )?;
-        if subject != account.subject {
-            bail!("account identity does not match archive");
+        let subject: Option<String> = db
+            .query_row(
+                "SELECT provider_subject FROM account_metadata WHERE id=1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match subject {
+            Some(subject) => {
+                if subject != account.subject {
+                    bail!("account identity does not match archive");
+                }
+            }
+            None => {
+                db.execute(
+                    "INSERT INTO account_metadata(id,provider_subject,email,schema_version) VALUES(1,?1,?2,1)",
+                    params![account.subject, account.email],
+                )?;
+            }
         }
         Ok(())
     }
@@ -123,4 +135,43 @@ pub fn default_root() -> Result<PathBuf> {
         .map(PathBuf::from)
         .context("APPDATA is unavailable")?;
     Ok(base.join("ContactHistory"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_auto_heals_missing_account_metadata() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::new(temp.path().to_path_buf()).unwrap();
+        let account = store.add_account("sub-123", "user@example.com").unwrap();
+        let db = store.open_db(&account.id).unwrap();
+
+        // Simulate an unpopulated account_metadata table (e.g. from empty/reset db)
+        db.execute("DELETE FROM account_metadata WHERE id=1", [])
+            .unwrap();
+
+        // verify() should auto-heal by inserting the account metadata instead of failing with QueryReturnedNoRows
+        assert!(store.verify(&account, &db).is_ok());
+
+        // Confirm it was populated
+        let subject: String = db
+            .query_row(
+                "SELECT provider_subject FROM account_metadata WHERE id=1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(subject, "sub-123");
+
+        // Confirm verify fails when subject mismatches
+        let mismatched = Account {
+            id: account.id.clone(),
+            subject: "different-sub".into(),
+            email: "other@example.com".into(),
+        };
+        let err = store.verify(&mismatched, &db).unwrap_err();
+        assert!(err.to_string().contains("does not match"));
+    }
 }

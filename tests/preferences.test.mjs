@@ -5,9 +5,9 @@ import { readPreferences, applyPreferences, savePreferences } from '../src/lib/p
 test('preferences validate persisted values and tolerate unavailable storage', () => {
   let stored = '{"theme":"dark","density":"compact","reduceMotion":true}';
   globalThis.localStorage = { getItem: () => stored, setItem: (_key, value) => { stored = value; } };
-  assert.deepEqual(readPreferences(), { theme: 'dark', density: 'compact', reduceMotion: true });
+  assert.deepEqual(readPreferences(), { theme: 'dark', density: 'compact', reduceMotion: true, defaultCountry: 'auto' });
   stored = '{"theme":"invalid","density":null,"reduceMotion":"true"}';
-  assert.deepEqual(readPreferences(), { theme: 'system', density: 'comfortable', reduceMotion: false });
+  assert.deepEqual(readPreferences(), { theme: 'system', density: 'comfortable', reduceMotion: false, defaultCountry: 'auto' });
   for (const value of ['null', '{broken']) {
     stored = value;
     assert.equal(readPreferences().theme, 'system');

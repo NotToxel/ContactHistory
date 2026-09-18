@@ -4,7 +4,7 @@ Windows-first local archive for observed Google Contacts. The app implements rea
 
 ## Develop
 
-Install Bun (or Node.js) and the Rust/MSVC toolchain with the Windows WebView2/Tauri prerequisites. Then run:
+Install Bun and the Rust/MSVC toolchain with the Windows WebView2/Tauri prerequisites. Then run:
 
 ```powershell
 bun install

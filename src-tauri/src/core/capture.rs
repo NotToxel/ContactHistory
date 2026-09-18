@@ -623,9 +623,14 @@ pub fn changes(
     }
     let db = store.open_db(&account.id)?;
     store.verify(account, &db)?;
-    let mut stmt=db.prepare("SELECT i.resource_name,r.kind,r.version,r.semantic_json,(SELECT p.semantic_json FROM contact_revisions p WHERE p.contact_id=r.contact_id AND p.version=r.version-1) FROM contact_revisions r JOIN contact_identities i ON i.id=r.contact_id WHERE r.first_capture=?1 ORDER BY r.id LIMIT 100 OFFSET ?2")?;
-    let rows = stmt
-        .query_map(params![sequence, offset], |r| {
+    let sql = if offset > 0 {
+        "SELECT i.resource_name,r.kind,r.version,r.semantic_json,(SELECT p.semantic_json FROM contact_revisions p WHERE p.contact_id=r.contact_id AND p.version=r.version-1) FROM contact_revisions r JOIN contact_identities i ON i.id=r.contact_id WHERE r.first_capture=?1 ORDER BY r.id LIMIT -1 OFFSET ?2"
+    } else {
+        "SELECT i.resource_name,r.kind,r.version,r.semantic_json,(SELECT p.semantic_json FROM contact_revisions p WHERE p.contact_id=r.contact_id AND p.version=r.version-1) FROM contact_revisions r JOIN contact_identities i ON i.id=r.contact_id WHERE r.first_capture=?1 ORDER BY r.id"
+    };
+    let mut stmt = db.prepare(sql)?;
+    let rows = if offset > 0 {
+        stmt.query_map(params![sequence, offset], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -634,7 +639,19 @@ pub fn changes(
                 r.get::<_, Option<String>>(4)?,
             ))
         })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+        .collect::<rusqlite::Result<Vec<_>>>()?
+    } else {
+        stmt.query_map(params![sequence], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, Option<String>>(4)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+    };
     rows.into_iter()
         .map(|(resource_name, kind, version, after, before)| {
             Ok(ChangeRow {
@@ -689,6 +706,81 @@ pub fn contact_history(store: &Store, account: &Account, resource: &str) -> Resu
     }
     history.reverse();
     Ok(history)
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct ChangelogEntry {
+    pub capture_sequence: i64,
+    pub committed_at: String,
+    pub resource_name: String,
+    pub kind: String,
+    pub version: i64,
+    pub before: Option<Value>,
+    pub after: Option<Value>,
+}
+
+pub fn all_changes(
+    store: &Store,
+    account: &Account,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<ChangelogEntry>> {
+    let db = store.open_db(&account.id)?;
+    store.verify(account, &db)?;
+    let lim = limit.unwrap_or(2000);
+    let off = offset.unwrap_or(0);
+    let mut stmt = db.prepare(
+        "SELECT \
+            r.first_capture, \
+            c.committed_at, \
+            i.resource_name, \
+            r.kind, \
+            r.version, \
+            r.semantic_json, \
+            (SELECT p.semantic_json FROM contact_revisions p WHERE p.contact_id=r.contact_id AND p.version=r.version-1) \
+         FROM contact_revisions r \
+         JOIN contact_identities i ON i.id=r.contact_id \
+         JOIN captures c ON c.sequence=r.first_capture \
+         ORDER BY r.first_capture DESC, r.id DESC \
+         LIMIT ?1 OFFSET ?2"
+    )?;
+    let rows = stmt
+        .query_map(params![lim, off], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, Option<String>>(6)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    rows.into_iter()
+        .map(|(sequence, committed_at, resource_name, kind, version, after, before)| {
+            Ok(ChangelogEntry {
+                capture_sequence: sequence,
+                committed_at,
+                resource_name,
+                kind: if kind == "deleted" {
+                    "removed".into()
+                } else if version == 1 {
+                    "added".into()
+                } else {
+                    "changed".into()
+                },
+                version,
+                before: before.map(|x| serde_json::from_str(&x)).transpose()?,
+                after: if kind == "deleted" {
+                    None
+                } else {
+                    Some(serde_json::from_str(&after)?)
+                },
+            })
+        })
+        .collect()
 }
 
 pub fn compare_snapshots(
@@ -785,6 +877,12 @@ pub fn compare_snapshots(
 }
 
 fn is_system_group(resource_name: &str, payload: &Value, name: &str) -> bool {
+    let trimmed_name = name.trim();
+    // Retain user's propercase "Family" label unless it's explicitly the system group
+    if trimmed_name == "Family" && !resource_name.to_ascii_lowercase().ends_with("/family") {
+        return false;
+    }
+
     if payload.get("groupType").and_then(Value::as_str) == Some("SYSTEM_CONTACT_GROUP") {
         return true;
     }
@@ -800,7 +898,13 @@ fn is_system_group(resource_name: &str, payload: &Value, name: &str) -> bool {
     {
         return true;
     }
-    let norm_name = name.trim().to_ascii_lowercase().replace(['-', '_', ' '], "");
+
+    // Ignore lowercase "family"
+    if trimmed_name == "family" {
+        return true;
+    }
+
+    let norm_name = trimmed_name.to_ascii_lowercase().replace(['-', '_', ' '], "");
     matches!(
         norm_name.as_str(),
         "mycontacts"
@@ -811,7 +915,6 @@ fn is_system_group(resource_name: &str, payload: &Value, name: &str) -> bool {
             | "chatbuddies"
             | "chatcontacts"
             | "coworkers"
-            | "family"
             | "familyandfriends"
             | "friends"
     )

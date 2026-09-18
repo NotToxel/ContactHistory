@@ -1,6 +1,6 @@
 mod core;
 use core::{
-    backup, capture, export, google, media, scheduler,
+    backup, capture, export, google, media, photo_export, scheduler,
     storage::{Account, Store},
 };
 use serde::Serialize;
@@ -94,6 +94,16 @@ fn list_changes(
     let store = store()?;
     let account = error(store.account(&account_id))?;
     error(capture::changes(&store, &account, sequence, offset))
+}
+#[tauri::command]
+fn list_all_changes(
+    account_id: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<capture::ChangelogEntry>, String> {
+    let store = store()?;
+    let account = error(store.account(&account_id))?;
+    error(capture::all_changes(&store, &account, limit, offset))
 }
 #[tauri::command]
 fn list_groups(account_id: String, sequence: i64) -> Result<Vec<capture::GroupRow>, String> {
@@ -222,20 +232,35 @@ async fn retry_media(account_id: String) -> Result<usize, String> {
     .await
     .map_err(|e| e.to_string())?
 }
-#[cfg(windows)]
 #[tauri::command]
-fn schedule_state() -> bool {
-    scheduler::installed()
+fn schedule_state() -> Result<bool, String> {
+    let store = store()?;
+    let config = scheduler::load_config(&store);
+    Ok(config.enabled)
 }
-#[cfg(windows)]
+#[tauri::command]
+fn get_schedule_config() -> Result<scheduler::ScheduleConfig, String> {
+    let store = store()?;
+    Ok(scheduler::load_config(&store))
+}
+#[tauri::command]
+fn save_schedule_config(config: scheduler::ScheduleConfig) -> Result<(), String> {
+    let store = store()?;
+    error(scheduler::apply_schedule(&store, &config))
+}
 #[tauri::command]
 fn enable_schedule() -> Result<(), String> {
-    error(scheduler::install())
+    let store = store()?;
+    let mut config = scheduler::load_config(&store);
+    config.enabled = true;
+    error(scheduler::apply_schedule(&store, &config))
 }
-#[cfg(windows)]
 #[tauri::command]
 fn disable_schedule() -> Result<(), String> {
-    error(scheduler::uninstall())
+    let store = store()?;
+    let mut config = scheduler::load_config(&store);
+    config.enabled = false;
+    error(scheduler::apply_schedule(&store, &config))
 }
 #[tauri::command]
 async fn export_capture(
@@ -253,6 +278,43 @@ async fn export_capture(
             sequence,
             &format,
             std::path::Path::new(&destination),
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn export_photos(
+    app: tauri::AppHandle,
+    account_id: String,
+    sequence: i64,
+    destination: String,
+    format: String,
+    include_default: bool,
+) -> Result<photo_export::PhotoExportResult, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<photo_export::PhotoExportResult, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        let app_handle = app.clone();
+        let emit = move |done: usize, total: usize, name: &str| {
+            use tauri::Emitter;
+            let _ = app_handle.emit(
+                "photo-export-progress",
+                photo_export::PhotoExportProgress {
+                    current: done,
+                    total,
+                    name: name.to_string(),
+                },
+            );
+        };
+        error(photo_export::export_contact_photos(
+            &store,
+            &account,
+            sequence,
+            std::path::Path::new(&destination),
+            &format,
+            include_default,
+            emit,
         ))
     })
     .await
@@ -341,6 +403,7 @@ pub fn run() {
             list_captures,
             capture_at_time,
             list_changes,
+            list_all_changes,
             compare_snapshots,
             list_groups,
             list_contacts,
@@ -354,9 +417,12 @@ pub fn run() {
             capture_if_due,
             retry_media,
             schedule_state,
+            get_schedule_config,
+            save_schedule_config,
             enable_schedule,
             disable_schedule,
             export_capture,
+            export_photos,
             import_csv,
             backup_account,
             restore_archive,

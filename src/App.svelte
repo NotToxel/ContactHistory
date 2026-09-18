@@ -2,13 +2,53 @@
   import { onMount, onDestroy } from 'svelte';
   import brandLogo from './assets/contact-history.png';
   import { version as appVersion } from '../package.json';
-  import { readPreferences, savePreferences, applyPreferences, type Preferences } from './lib/preferences';
+  import { readPreferences, savePreferences, applyPreferences, getEffectiveCountry, type Preferences } from './lib/preferences';
+  import ToggleSwitch from './lib/ToggleSwitch.svelte';
+  import CustomSelect, { type SelectOption } from './lib/CustomSelect.svelte';
+  import { getCountryOptions, formatPhone } from './lib/phone';
+  import { getContactPhotos, type ContactPhotoItem } from './lib/photos';
+
   let preferences = $state(readPreferences());
   let preferenceNotice = $state('Changes save automatically');
-  let settingsTab = $state<'preferences' | 'about'>('preferences');
+  let settingsTab = $state<'preferences' | 'schedule' | 'about'>('preferences');
   let scheduleBusy = $state(false);
   let scheduleReady = $state(false);
   let settingsError = $state('');
+  let scheduleConfig = $state<ScheduleConfig>({
+    enabled: false,
+    interval_days: 7,
+    time_of_day: '09:00',
+    run_at_logon: true,
+    run_daily: true,
+  });
+
+  const effectiveCountry = $derived(getEffectiveCountry(preferences));
+  const countryOptions: SelectOption[] = getCountryOptions();
+
+  const densityOptions: SelectOption[] = [
+    { value: 'comfortable', label: 'Comfortable', sublabel: 'Spacious contact rows' },
+    { value: 'compact', label: 'Compact', sublabel: 'Dense table rows' },
+  ];
+
+  const sortFieldOptions: SelectOption[] = [
+    { value: 'first', label: 'First name', sublabel: 'Sort by given name' },
+    { value: 'last', label: 'Last name', sublabel: 'Sort by family name' },
+  ];
+
+  const sortDirectionOptions: SelectOption[] = [
+    { value: 'asc', label: 'Ascending (A → Z)' },
+    { value: 'desc', label: 'Descending (Z → A)' },
+  ];
+
+  const intervalOptions: SelectOption[] = [
+    { value: 1, label: 'Every 1 day (Daily)', sublabel: 'Snapshot taken every day' },
+    { value: 2, label: 'Every 2 days', sublabel: 'Snapshot taken every 48h' },
+    { value: 3, label: 'Every 3 days', sublabel: 'Twice a week' },
+    { value: 7, label: 'Every 7 days (Weekly)', sublabel: 'Recommended default' },
+    { value: 14, label: 'Every 14 days (Bi-weekly)', sublabel: 'Every two weeks' },
+    { value: 30, label: 'Every 30 days (Monthly)', sublabel: 'Monthly archiving' },
+  ];
+
   const colorScheme = matchMedia('(prefers-color-scheme: dark)');
   function syncSystemTheme() { applyPreferences(preferences); }
   function updatePreferences(patch: Partial<Preferences>) {
@@ -33,23 +73,33 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import type { UnlistenFn } from '@tauri-apps/api/event';
   import { save, open } from '@tauri-apps/plugin-dialog';
+  import ContactChangeCard from './lib/ContactChangeCard.svelte';
+  import FieldChanges from './lib/FieldChanges.svelte';
+  import ContactPayloadViewer from './lib/ContactPayloadViewer.svelte';
+  import { computeContactDiff, extractDisplayName } from './lib/diff';
   import {
     api,
     listenCaptureProgress,
+    listenPhotoExportProgress,
     type Account,
     type Capture,
     type Contact,
     type GroupRow,
     type MediaView,
     type DueStatus,
+    type ScheduleConfig,
     type Change,
+    type ChangelogEntry,
     type CaptureProgress,
+    type ContactHistoryEntry,
+    type PhotoExportProgress,
+    type PhotoExportResult,
   } from './lib/ipc';
 
   const appWindow = getCurrentWindow();
 
   type Page = 'contacts' | 'changes' | 'settings' | 'onboarding';
-  type ColumnKey = 'name' | 'email' | 'phone' | 'birthday' | 'labels' | 'org' | 'title' | 'address' | 'notes';
+  type ColumnKey = 'name' | 'job' | 'email' | 'phone' | 'birthday' | 'labels' | 'org' | 'title' | 'address' | 'notes';
 
   interface ColumnDef {
     key: ColumnKey;
@@ -59,14 +109,25 @@
 
   const ALL_COLUMNS: ColumnDef[] = [
     { key: 'name', label: 'Name', defaultWidth: 260 },
+    { key: 'job', label: 'Job title and company', defaultWidth: 220 },
     { key: 'email', label: 'Email', defaultWidth: 230 },
     { key: 'phone', label: 'Phone number', defaultWidth: 180 },
     { key: 'birthday', label: 'Birthday', defaultWidth: 160 },
     { key: 'labels', label: 'Labels', defaultWidth: 240 },
-    { key: 'org', label: 'Organization', defaultWidth: 180 },
-    { key: 'title', label: 'Job title', defaultWidth: 160 },
     { key: 'address', label: 'Address', defaultWidth: 220 },
     { key: 'notes', label: 'Notes', defaultWidth: 200 },
+    { key: 'org', label: 'Organization', defaultWidth: 180 },
+    { key: 'title', label: 'Job title', defaultWidth: 160 },
+  ];
+
+  const AVAILABLE_SELECT_COLUMNS: { key: ColumnKey; label: string }[] = [
+    { key: 'job', label: 'Job title and company' },
+    { key: 'email', label: 'Email' },
+    { key: 'phone', label: 'Phone number' },
+    { key: 'address', label: 'Address' },
+    { key: 'birthday', label: 'Birthday' },
+    { key: 'labels', label: 'Labels' },
+    { key: 'notes', label: 'Notes' },
   ];
 
   // App State
@@ -94,6 +155,7 @@
   let changes: Change[] = $state([]);
   let chosenChange: Change | undefined = $state();
   let pageView: Page = $state('onboarding');
+  const hasData = $derived(Boolean(selected && captures.length > 0));
   let dateInput = $state('');
   let search = $state('');
   let clientId = $state('');
@@ -108,10 +170,32 @@
   let showAccountMenu = $state(false);
   let showSettingsModal = $state(false);
   let showRawDataModal = $state(false);
+  let showDetailMenu = $state(false);
+  let showPhotosModal = $state(false);
+  let photoInfoTooltip: { text: string; x: number; y: number } | null = $state(null);
+  let selectedPhotoUrl: string | null = $state(null);
+  let showPhotoExportModal = $state(false);
+  let photoExportFormat = $state<'folder' | 'zip'>('folder');
+  let photoExportIncludeDefault = $state(false);
+  let photoExportBusy = $state(false);
+  let photoExportProgress = $state<PhotoExportProgress | null>(null);
+  let photoExportResult = $state<PhotoExportResult | null>(null);
+  let photoExportError = $state('');
   let compareBaseSeq: number | null = $state(null);
   let compareTargetSeq: number | null = $state(null);
+  let changesTab = $state<'comparison' | 'changelog'>('comparison');
+  let comparisonSearch = $state('');
+  let comparisonKindFilter = $state<'all' | 'added' | 'changed' | 'removed'>('all');
+  let changelogList = $state<ChangelogEntry[]>([]);
+  let loadingChangelog = $state(false);
+  let changelogSearch = $state('');
+  let changelogKindFilter = $state<'all' | 'added' | 'changed' | 'removed'>('all');
+  let collapsedSnapshots = $state<Set<number>>(new Set());
   let copiedFieldKey = $state<string | null>(null);
   let copiedTimeout: any = null;
+  let contactHistory = $state<ContactHistoryEntry[]>([]);
+  let loadingHistory = $state(false);
+  let expandedHistoryVersions = $state<Set<number>>(new Set());
   let captureProgress = $state<CaptureProgress | null>(null);
   let toastMessage = $state('');
 
@@ -119,6 +203,7 @@
   let activeColKeys = $state<ColumnKey[]>(['name', 'email', 'phone', 'birthday', 'labels']);
   let colWidths = $state<Record<ColumnKey, number>>({
     name: 260,
+    job: 220,
     email: 230,
     phone: 180,
     birthday: 160,
@@ -128,6 +213,16 @@
     address: 220,
     notes: 200,
   });
+  let openColDropdownSlot = $state<number | null>(null);
+  let draggedColIndex = $state<number | null>(null);
+  let dragOverColIndex = $state<number | null>(null);
+  let pointerDragSlot = $state<number | null>(null);
+  let pointerOverSlot = $state<number | null>(null);
+
+  // Name sorting state
+  let nameSortField = $state<'first' | 'last'>('first');
+  let nameSortDirection = $state<'asc' | 'desc'>('asc');
+  let showSortMenu = $state(false);
 
   // Group Map derived for quick label name lookup
   const groupMap = $derived.by(() => {
@@ -242,6 +337,13 @@
   }
 
   function getAvatarSource(c: Contact, mediaList: MediaView[] = []): string {
+    if (selectedPhotoUrl && detail?.resource_name === c.resource_name) {
+      const match = mediaList.find((m) => m.source_url === selectedPhotoUrl && m.data_url);
+      if (match?.data_url) return match.data_url;
+      if (avatarMap[selectedPhotoUrl]) return avatarMap[selectedPhotoUrl];
+      return selectedPhotoUrl;
+    }
+
     const preferredUrl = getPhotoUrl(c.payload);
     if (preferredUrl) {
       if (avatarMap[preferredUrl]) return avatarMap[preferredUrl];
@@ -257,6 +359,8 @@
     if (firstMedia?.data_url) return firstMedia.data_url;
     return '';
   }
+
+
 
   // Blazing Fast Typo-Tolerant Search Engine
   function normalizeSearchText(str: string): string {
@@ -404,10 +508,19 @@
 
     // Label filter only: search does not filter existing list while typing
     if (selectedGroup) {
-      const chosenName = groups.find((group) => group.resource_name === selectedGroup)?.name.trim().toLocaleLowerCase();
-      const matchingGroups = new Set(groups.filter((group) => group.name.trim().toLocaleLowerCase() === chosenName).map((group) => group.resource_name));
-      filtered = filtered.filter((contact) => ((contact.payload.memberships as Array<any>) || []).some((membership) =>
-        matchingGroups.has(membership?.contactGroupMembership?.contactGroupResourceName)));
+      const chosenName = groups.find((group) => group.resource_name === selectedGroup)?.name?.trim().toLocaleLowerCase()
+        || groupMap.get(selectedGroup)?.trim().toLocaleLowerCase();
+      const matchingGroups = new Set(
+        groups
+          .filter((group) => group.name?.trim().toLocaleLowerCase() === chosenName)
+          .map((group) => group.resource_name)
+      );
+      if (selectedGroup) matchingGroups.add(selectedGroup);
+      filtered = filtered.filter((contact) =>
+        ((contact.payload.memberships as Array<any>) || []).some((membership) =>
+          matchingGroups.has(membership?.contactGroupMembership?.contactGroupResourceName)
+        )
+      );
     }
 
     contacts = filtered;
@@ -532,12 +645,35 @@
     return false;
   }
 
-  // Sorted contacts: alphabetical by display name by default
+  function getContactSortKey(c: Contact, field: 'first' | 'last'): string {
+    const payload = c.payload || {};
+    const names = (payload.names as Array<any>) || [];
+    const nameObj = names[0];
+    if (nameObj) {
+      const first = (nameObj.givenName || '').trim();
+      const last = (nameObj.familyName || '').trim();
+      if (field === 'last') {
+        if (last && first) return `${last}, ${first}`.toLowerCase();
+        if (last) return last.toLowerCase();
+        if (nameObj.displayNameLastFirst) return nameObj.displayNameLastFirst.toLowerCase();
+        if (first) return first.toLowerCase();
+      } else {
+        if (first && last) return `${first} ${last}`.toLowerCase();
+        if (first) return first.toLowerCase();
+        if (last) return last.toLowerCase();
+      }
+      if (nameObj.displayName) return nameObj.displayName.trim().toLowerCase();
+    }
+    return getDisplayName(c).toLowerCase();
+  }
+
+  // Sorted contacts: alphabetical by display name respecting first/last name and asc/desc order
   const sortedContacts = $derived.by(() => {
     return [...contacts].sort((a, b) => {
-      const nameA = getDisplayName(a).toLowerCase();
-      const nameB = getDisplayName(b).toLowerCase();
-      return nameA.localeCompare(nameB);
+      const keyA = getContactSortKey(a, nameSortField);
+      const keyB = getContactSortKey(b, nameSortField);
+      const cmp = keyA.localeCompare(keyB, undefined, { numeric: true, sensitivity: 'base' });
+      return nameSortDirection === 'asc' ? cmp : -cmp;
     });
   });
 
@@ -556,15 +692,21 @@
 
   function getPrimaryPhone(payload: Record<string, unknown>): string {
     const phones = (payload.phoneNumbers as Array<any>) || [];
-    return phones[0]?.value || '';
+    const raw = phones[0]?.value || '';
+    if (!raw) return '';
+    return formatPhone(raw, phones[0]?.canonicalForm, effectiveCountry).value;
   }
 
-  function getAllPhones(payload: Record<string, unknown>): Array<{ value: string; type: string }> {
+  function getAllPhones(payload: Record<string, unknown>): Array<{ value: string; formatted: string; type: string }> {
     const phones = (payload.phoneNumbers as Array<any>) || [];
-    return phones.map((p) => ({
-      value: p?.value || '',
-      type: p?.formattedType || p?.type || 'Other',
-    }));
+    return phones.map((p) => {
+      const raw = p?.value || '';
+      return {
+        value: raw,
+        formatted: formatPhone(raw, p?.canonicalForm, effectiveCountry).value || raw,
+        type: p?.formattedType || p?.type || 'Other',
+      };
+    });
   }
 
   function getBirthday(payload: Record<string, unknown>): string {
@@ -582,19 +724,30 @@
     return [d, m, y].filter(Boolean).join(' ');
   }
 
-  function getContactLabels(payload: Record<string, unknown>): string[] {
+  interface ContactLabelItem {
+    name: string;
+    resourceName: string;
+  }
+
+  function getContactLabelItems(payload: Record<string, unknown>): ContactLabelItem[] {
     const mems = (payload.memberships as Array<any>) || [];
-    const labels: string[] = [];
+    const items: ContactLabelItem[] = [];
+    const seen = new Set<string>();
     for (const m of mems) {
       const res = m?.contactGroupMembership?.contactGroupResourceName;
       if (res) {
         const name = groupMap.get(res);
-        if (name && !name.startsWith('systemContactGroups/')) {
-          labels.push(name);
+        if (name && !name.startsWith('systemContactGroups/') && !seen.has(name)) {
+          seen.add(name);
+          items.push({ name, resourceName: res });
         }
       }
     }
-    return labels;
+    return items;
+  }
+
+  function getContactLabels(payload: Record<string, unknown>): string[] {
+    return getContactLabelItems(payload).map((item) => item.name);
   }
 
   function getNickname(payload: Record<string, unknown>): string {
@@ -615,9 +768,75 @@
     return addrs[0]?.formattedValue || addrs[0]?.streetAddress || '';
   }
 
+  function getAllAddresses(payload: Record<string, unknown>): Array<{ lines: string[]; type: string; copyValue: string }> {
+    const addrs = (payload.addresses as Array<any>) || [];
+    return addrs.map((a) => {
+      // Build multi-line display: prefer formattedValue (split on newlines), else build from parts
+      let lines: string[];
+      if (a?.formattedValue?.trim()) {
+        lines = a.formattedValue.trim().split(/\r?\n/).filter(Boolean);
+      } else {
+        lines = [
+          a.streetAddress,
+          a.extendedAddress,
+          a.city && a.region ? `${a.city}, ${a.region} ${a.postalCode || ''}`.trim() : (a.city || a.region || ''),
+          a.postalCode && !a.city && !a.region ? a.postalCode : '',
+          a.country || a.countryCode || '',
+        ].filter(Boolean);
+      }
+      const copyValue = lines.join(', ');
+      return {
+        lines,
+        type: a?.formattedType || a?.type || 'Home',
+        copyValue,
+      };
+    }).filter((a) => a.lines.length > 0);
+  }
+
   function getNotes(payload: Record<string, unknown>): string {
     const bios = (payload.biographies as Array<any>) || [];
     return bios[0]?.value || '';
+  }
+
+  function getAllRelations(payload: Record<string, unknown>): Array<{ name: string; type: string }> {
+    const rels = (payload.relations as Array<any>) || [];
+    return rels
+      .map((r) => ({ name: r?.person || '', type: r?.formattedType || r?.type || 'Related person' }))
+      .filter((r) => r.name);
+  }
+
+  function getAllEvents(payload: Record<string, unknown>): Array<{ date: string; type: string }> {
+    const evts = (payload.events as Array<any>) || [];
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return evts.map((e) => {
+      const d = e?.date;
+      let dateStr = '';
+      if (d) {
+        const parts = [d.day, d.month && months[d.month - 1], d.year].filter(Boolean);
+        dateStr = parts.join(' ');
+      } else if (e?.text) {
+        dateStr = e.text;
+      }
+      return { date: dateStr, type: e?.formattedType || e?.type || 'Event' };
+    }).filter((e) => e.date);
+  }
+
+  function getAllUrls(payload: Record<string, unknown>): Array<{ url: string; type: string }> {
+    const urls = (payload.urls as Array<any>) || [];
+    return urls
+      .map((u) => ({ url: u?.value || '', type: u?.formattedType || u?.type || 'Website' }))
+      .filter((u) => u.url);
+  }
+
+  function getAllUserDefined(payload: Record<string, unknown>): Array<{ key: string; value: string }> {
+    const ud = (payload.userDefined as Array<any>) || [];
+    return ud
+      .map((u) => ({ key: u?.key || '', value: u?.value || '' }))
+      .filter((u) => u.key || u.value);
+  }
+
+  function getAddressMapsUrl(addr: { lines: string[]; copyValue: string }): string {
+    return `https://maps.google.com/?q=${encodeURIComponent(addr.copyValue)}`;
   }
 
   function formatCaptureTime(timeStr?: string): string {
@@ -630,6 +849,71 @@
       hour: '2-digit',
       minute: '2-digit',
     });
+  }
+
+  function formatRelativeTime(dateStr?: string | null): string {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    const diffMs = Date.now() - d.getTime();
+    if (diffMs < 0) return 'recently';
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+    const diffMonth = Math.floor(diffDay / 30);
+    const diffYear = Math.floor(diffDay / 365);
+
+    if (diffSec < 45) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHour < 24) return `${diffHour}h ago`;
+    if (diffDay === 1) return 'yesterday';
+    if (diffDay < 30) return `${diffDay}d ago`;
+    if (diffMonth < 12) return `${diffMonth}mo ago`;
+    return `${diffYear}y ago`;
+  }
+
+  function getLastEditedInfo(c: Contact | undefined, history: ContactHistoryEntry[]): { date: string; relative: string } {
+    if (!c) return { date: 'Unknown', relative: '' };
+    const sources = (c.payload?.metadata as any)?.sources || [];
+    const updateTime = sources.find((s: any) => s?.updateTime)?.updateTime;
+    let target = updateTime;
+    if (!target && history.length > 0) {
+      target = history[0].committed_at;
+    } else if (!target && capture?.committed_at) {
+      target = capture.committed_at;
+    }
+    return {
+      date: target ? formatCaptureTime(target) : 'Not recorded',
+      relative: target ? formatRelativeTime(target) : '',
+    };
+  }
+
+  function getFirstSeenInfo(c: Contact | undefined, history: ContactHistoryEntry[]): { date: string; relative: string } {
+    if (!c) return { date: 'Unknown', relative: '' };
+    let target = '';
+    if (history.length > 0) {
+      target = history[history.length - 1].committed_at;
+    } else if (capture?.committed_at) {
+      target = capture.committed_at;
+    }
+    return {
+      date: target ? formatCaptureTime(target) : 'Not recorded',
+      relative: target ? formatRelativeTime(target) : '',
+    };
+  }
+
+  const detailLastEdited = $derived(getLastEditedInfo(detail, contactHistory));
+  const detailFirstSeen = $derived(getFirstSeenInfo(detail, contactHistory));
+
+  function toggleHistoryVersionExpanded(version: number) {
+    const next = new Set(expandedHistoryVersions);
+    if (next.has(version)) {
+      next.delete(version);
+    } else {
+      next.add(version);
+    }
+    expandedHistoryVersions = next;
   }
 
   // Window Controls
@@ -680,9 +964,17 @@
   async function refreshAccounts() {
     try {
       accounts = await api.accounts();
-      if (!selected && accounts.length) {
-        await selectAccount(accounts[0]);
-      } else if (!accounts.length) {
+      if (accounts.length) {
+        if (!selected || !accounts.some((a) => a.id === selected?.id)) {
+          await selectAccount(accounts[0]);
+        }
+      } else {
+        selected = undefined;
+        captures = [];
+        capture = undefined;
+        contacts = [];
+        changes = [];
+        groups = [];
         pageView = 'onboarding';
       }
     } catch (e) {
@@ -710,13 +1002,23 @@
       await refreshGroups();
       await refreshContacts();
       await refreshChanges();
-      navigate('contacts');
+      await refreshAllChanges();
+      if (captures.length > 0) {
+        navigate('contacts');
+      } else {
+        navigate('onboarding');
+      }
     } catch (e) {
       error = String(e);
     }
   }
 
   function isSystemGroup(resName: string, name: string): boolean {
+    const trimmed = (name || '').trim();
+    // Retain user's propercase "Family" label unless it's explicitly the system group
+    if (trimmed === 'Family' && !(resName || '').toLowerCase().endsWith('/family')) {
+      return false;
+    }
     const res = (resName || '').toLowerCase();
     if (
       res.endsWith('/mycontacts') ||
@@ -730,7 +1032,11 @@
     ) {
       return true;
     }
-    const norm = (name || '').trim().toLowerCase().replace(/[-_\s]/g, '');
+    // Ignore lowercase "family"
+    if (trimmed === 'family') {
+      return true;
+    }
+    const norm = trimmed.toLowerCase().replace(/[-_\s]/g, '');
     const sysNames = new Set([
       'mycontacts',
       'starred',
@@ -740,7 +1046,6 @@
       'chatbuddies',
       'chatcontacts',
       'coworkers',
-      'family',
       'familyandfriends',
       'friends',
     ]);
@@ -909,18 +1214,155 @@
     chosenChange = undefined;
   }
 
+  async function refreshAllChanges() {
+    if (!selected) {
+      changelogList = [];
+      return;
+    }
+    loadingChangelog = true;
+    try {
+      changelogList = await api.allChanges(selected.id, 2000, 0);
+    } catch (e) {
+      changelogList = [];
+    } finally {
+      loadingChangelog = false;
+    }
+  }
+
+  function swapComparisonSnapshots() {
+    const temp = compareBaseSeq;
+    compareBaseSeq = compareTargetSeq;
+    compareTargetSeq = temp;
+    refreshChangesComparison();
+  }
+
+  function compareSnapshotWithPrior(seq: number) {
+    compareTargetSeq = seq;
+    const prior = captures.find((c) => c.sequence < seq);
+    compareBaseSeq = prior ? prior.sequence : Math.max(1, seq - 1);
+    changesTab = 'comparison';
+    refreshChangesComparison();
+  }
+
+  function toggleSnapshotCollapse(seq: number) {
+    const next = new Set(collapsedSnapshots);
+    if (next.has(seq)) {
+      next.delete(seq);
+    } else {
+      next.add(seq);
+    }
+    collapsedSnapshots = next;
+  }
+
+  const filteredComparisonChanges = $derived.by(() => {
+    let list = changes;
+    if (comparisonKindFilter !== 'all') {
+      list = list.filter((c) => c.kind === comparisonKindFilter);
+    }
+    const q = comparisonSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter((c) => {
+        const nameA = extractDisplayName(c.after).toLowerCase();
+        const nameB = extractDisplayName(c.before).toLowerCase();
+        const res = c.resource_name.toLowerCase();
+        if (nameA.includes(q) || nameB.includes(q) || res.includes(q)) return true;
+        const textA = JSON.stringify(c.after || '').toLowerCase();
+        const textB = JSON.stringify(c.before || '').toLowerCase();
+        return textA.includes(q) || textB.includes(q);
+      });
+    }
+    return list;
+  });
+
+  const comparisonStats = $derived.by(() => {
+    return {
+      total: changes.length,
+      added: changes.filter((c) => c.kind === 'added').length,
+      changed: changes.filter((c) => c.kind === 'changed').length,
+      removed: changes.filter((c) => c.kind === 'removed').length,
+    };
+  });
+
+  const filteredChangelog = $derived.by(() => {
+    let list = changelogList;
+    if (changelogKindFilter !== 'all') {
+      list = list.filter((c) => c.kind === changelogKindFilter);
+    }
+    const q = changelogSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter((c) => {
+        const nameA = extractDisplayName(c.after).toLowerCase();
+        const nameB = extractDisplayName(c.before).toLowerCase();
+        const res = c.resource_name.toLowerCase();
+        if (nameA.includes(q) || nameB.includes(q) || res.includes(q)) return true;
+        const textA = JSON.stringify(c.after || '').toLowerCase();
+        const textB = JSON.stringify(c.before || '').toLowerCase();
+        return textA.includes(q) || textB.includes(q);
+      });
+    }
+    return list;
+  });
+
+  const changelogStats = $derived.by(() => {
+    return {
+      totalSnapshots: captures.length,
+      totalEvents: changelogList.length,
+      added: changelogList.filter((c) => c.kind === 'added').length,
+      changed: changelogList.filter((c) => c.kind === 'changed').length,
+      removed: changelogList.filter((c) => c.kind === 'removed').length,
+    };
+  });
+
+  interface SnapshotChangelogGroup {
+    sequence: number;
+    committed_at: string;
+    capture?: Capture;
+    changes: ChangelogEntry[];
+  }
+
+  const changelogSnapshotGroups = $derived.by(() => {
+    const map = new Map<number, SnapshotChangelogGroup>();
+    for (const item of filteredChangelog) {
+      if (!map.has(item.capture_sequence)) {
+        const cap = captures.find((c) => c.sequence === item.capture_sequence);
+        map.set(item.capture_sequence, {
+          sequence: item.capture_sequence,
+          committed_at: item.committed_at,
+          capture: cap,
+          changes: [],
+        });
+      }
+      map.get(item.capture_sequence)!.changes.push(item);
+    }
+    return [...map.values()].sort((a, b) => b.sequence - a.sequence);
+  });
+
   async function selectContact(contact: Contact) {
     detail = contact;
+    selectedPhotoUrl = null;
+    contactHistory = [];
+    expandedHistoryVersions = new Set();
     media = mediaCache.get(contact.resource_name) || [];
-    if (selected && capture) {
+    if (selected) {
+      loadingHistory = true;
       try {
-        const loadedMedia = await api.media(selected.id, capture.sequence, contact.resource_name);
-        mediaCache.set(contact.resource_name, loadedMedia);
-        if (detail?.resource_name === contact.resource_name) {
-          media = loadedMedia;
-        }
+        contactHistory = await api.contactHistory(selected.id, contact.resource_name);
       } catch (e) {
-        // non-blocking
+        contactHistory = [];
+      } finally {
+        loadingHistory = false;
+      }
+
+      if (capture) {
+        try {
+          const loadedMedia = await api.media(selected.id, capture.sequence, contact.resource_name);
+          mediaCache.set(contact.resource_name, loadedMedia);
+          if (detail?.resource_name === contact.resource_name) {
+            media = loadedMedia;
+          }
+        } catch (e) {
+          // non-blocking
+        }
       }
     }
   }
@@ -1051,6 +1493,153 @@
     window.addEventListener('mouseup', onMouseUp);
   }
 
+  function getColumnLabel(key: ColumnKey): string {
+    if (key === 'job') return 'Job title and company';
+    if (key === 'email') return 'Email';
+    if (key === 'phone') return 'Phone number';
+    if (key === 'birthday') return 'Birthday';
+    if (key === 'labels') return 'Labels';
+    if (key === 'address') return 'Address';
+    if (key === 'notes') return 'Notes';
+    if (key === 'org') return 'Organization';
+    if (key === 'title') return 'Job title';
+    if (key === 'name') return 'Name';
+    return key;
+  }
+
+  function selectColumnForSlot(slotIndex: number, newKey: ColumnKey) {
+    if (slotIndex < 1 || slotIndex >= activeColKeys.length) return;
+    const existingIndex = activeColKeys.indexOf(newKey);
+    const newCols = [...activeColKeys];
+    if (existingIndex !== -1) {
+      // Swap existing slot with this slot
+      newCols[existingIndex] = newCols[slotIndex];
+      newCols[slotIndex] = newKey;
+    } else {
+      newCols[slotIndex] = newKey;
+    }
+    activeColKeys = newCols;
+    try {
+      localStorage.setItem('contacts_active_cols', JSON.stringify(activeColKeys));
+    } catch (_) {}
+    openColDropdownSlot = null;
+  }
+
+  function setSortField(field: 'first' | 'last') {
+    nameSortField = field;
+    try { localStorage.setItem('contacts_sort_field', field); } catch (_) {}
+  }
+
+  function toggleSortDirection() {
+    nameSortDirection = nameSortDirection === 'asc' ? 'desc' : 'asc';
+    try { localStorage.setItem('contacts_sort_dir', nameSortDirection); } catch (_) {}
+  }
+
+  function setSortDirection(dir: 'asc' | 'desc') {
+    nameSortDirection = dir;
+    try { localStorage.setItem('contacts_sort_dir', dir); } catch (_) {}
+  }
+
+  function moveColumnSlot(fromIndex: number, direction: -1 | 1) {
+    const toIndex = fromIndex + direction;
+    if (toIndex < 1 || toIndex >= activeColKeys.length) return;
+    const newCols = [...activeColKeys];
+    const temp = newCols[fromIndex];
+    newCols[fromIndex] = newCols[toIndex];
+    newCols[toIndex] = temp;
+    activeColKeys = newCols;
+    try {
+      localStorage.setItem('contacts_active_cols', JSON.stringify(activeColKeys));
+    } catch (_) {}
+  }
+
+  function startPointerDrag(slotIndex: number, e: PointerEvent) {
+    if (e.button !== 0) return;
+    pointerDragSlot = slotIndex;
+    pointerOverSlot = slotIndex;
+    openColDropdownSlot = null;
+    const currentTarget = e.currentTarget as HTMLElement;
+    try {
+      currentTarget.setPointerCapture(e.pointerId);
+    } catch (_) {}
+
+    function onMove(ev: PointerEvent) {
+      if (pointerDragSlot === null) return;
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const row = el?.closest('.col-order-slot-row');
+      if (row) {
+        const idx = row.getAttribute('data-slot-index');
+        if (idx) {
+          const num = parseInt(idx, 10);
+          if (!isNaN(num) && num >= 1 && num < activeColKeys.length) {
+            pointerOverSlot = num;
+          }
+        }
+      }
+    }
+
+    function onUp(ev: PointerEvent) {
+      try {
+        currentTarget.releasePointerCapture(ev.pointerId);
+      } catch (_) {}
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      if (pointerDragSlot !== null && pointerOverSlot !== null && pointerDragSlot !== pointerOverSlot) {
+        const newCols = [...activeColKeys];
+        const [moved] = newCols.splice(pointerDragSlot, 1);
+        newCols.splice(pointerOverSlot, 0, moved);
+        activeColKeys = newCols;
+        try {
+          localStorage.setItem('contacts_active_cols', JSON.stringify(activeColKeys));
+        } catch (_) {}
+      }
+      pointerDragSlot = null;
+      pointerOverSlot = null;
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  function handleColDragStart(slotIndex: number, e: DragEvent) {
+    draggedColIndex = slotIndex;
+    openColDropdownSlot = null;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(slotIndex));
+    }
+  }
+
+  function handleColDragOver(slotIndex: number, e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+    if (dragOverColIndex !== slotIndex) {
+      dragOverColIndex = slotIndex;
+    }
+  }
+
+  function handleColDrop(slotIndex: number, e: DragEvent) {
+    e.preventDefault();
+    if (draggedColIndex !== null && draggedColIndex !== slotIndex && slotIndex >= 1 && draggedColIndex >= 1) {
+      const newCols = [...activeColKeys];
+      const [moved] = newCols.splice(draggedColIndex, 1);
+      newCols.splice(slotIndex, 0, moved);
+      activeColKeys = newCols;
+      try {
+        localStorage.setItem('contacts_active_cols', JSON.stringify(activeColKeys));
+      } catch (_) {}
+    }
+    draggedColIndex = null;
+    dragOverColIndex = null;
+  }
+
+  function handleColDragEnd() {
+    draggedColIndex = null;
+    dragOverColIndex = null;
+  }
+
   function toggleColumn(key: ColumnKey) {
     if (key === 'name') return; // Name is always required
     if (activeColKeys.includes(key)) {
@@ -1083,6 +1672,7 @@
     activeColKeys = ['name', 'email', 'phone', 'birthday', 'labels'];
     colWidths = {
       name: 260,
+      job: 220,
       email: 230,
       phone: 180,
       birthday: 160,
@@ -1092,6 +1682,11 @@
       address: 220,
       notes: 200,
     };
+    openColDropdownSlot = null;
+    draggedColIndex = null;
+    dragOverColIndex = null;
+    pointerDragSlot = null;
+    pointerOverSlot = null;
     try {
       localStorage.removeItem('contacts_active_cols');
       localStorage.removeItem('contacts_col_widths');
@@ -1099,21 +1694,31 @@
   }
 
   // Settings Actions
-  async function toggleSchedule() {
+  async function updateSchedule(patch: Partial<ScheduleConfig>) {
     if (scheduleBusy || !scheduleReady) return;
     scheduleBusy = true;
     settingsError = '';
+    const updated = { ...scheduleConfig, ...patch };
+    scheduleConfig = updated;
+    scheduled = updated.enabled;
     try {
-      if (scheduled) await api.disableSchedule();
-      else await api.enableSchedule();
-      scheduled = await api.scheduleState();
+      await api.saveScheduleConfig(updated);
+      if (selected) {
+        due = await api.due(selected.id);
+      }
     } catch (e) {
-      settingsError = String(e);
-    } finally { scheduleBusy = false; }
+      settingsError = 'Failed to update schedule: ' + String(e);
+    } finally {
+      scheduleBusy = false;
+    }
+  }
+
+  async function toggleSchedule() {
+    await updateSchedule({ enabled: !scheduleConfig.enabled });
   }
 
   async function exportSelected(format: 'csv' | 'vcf') {
-    if (!selected || !capture) return;
+    if (!selected || !capture || capture.contact_count === 0) return;
     try {
       const destination = await save({
         defaultPath: `contacts-capture-${capture.sequence}.${format}`,
@@ -1127,8 +1732,74 @@
     }
   }
 
+  function openPhotoExport() {
+    if (!selected || !capture || capture.contact_count === 0) return;
+    showPhotoExportModal = true;
+    photoExportBusy = false;
+    photoExportProgress = null;
+    photoExportResult = null;
+    photoExportError = '';
+  }
+
+  async function startPhotoExport() {
+    if (!selected || !capture) return;
+    photoExportBusy = true;
+    photoExportError = '';
+    photoExportResult = null;
+    photoExportProgress = null;
+
+    let unlisten: UnlistenFn | null = null;
+    try {
+      unlisten = await listenPhotoExportProgress((p) => {
+        photoExportProgress = p;
+      });
+
+      let destination: string | null = null;
+      if (photoExportFormat === 'folder') {
+        const selectedDir = await open({
+          directory: true,
+          multiple: false,
+          title: 'Select Destination Folder for Contact Photos',
+        });
+        if (typeof selectedDir === 'string') {
+          destination = selectedDir;
+        }
+      } else {
+        const selectedFile = await save({
+          defaultPath: `contact-photos-${selected.email}-capture-${capture.sequence}.zip`,
+          filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
+        });
+        if (selectedFile) {
+          destination = selectedFile;
+        }
+      }
+
+      if (!destination) {
+        photoExportBusy = false;
+        if (unlisten) unlisten();
+        return;
+      }
+
+      const res = await api.exportPhotos(
+        selected.id,
+        capture.sequence,
+        destination,
+        photoExportFormat,
+        photoExportIncludeDefault
+      );
+      photoExportResult = res;
+    } catch (e) {
+      photoExportError = String(e);
+    } finally {
+      photoExportBusy = false;
+      if (unlisten) {
+        unlisten();
+      }
+    }
+  }
+
   async function backupSelected() {
-    if (!selected) return;
+    if (!selected || captures.length === 0) return;
     try {
       const destination = await save({
         defaultPath: `contact-history-${selected.email}.contacthistory`,
@@ -1159,6 +1830,12 @@
     settingsError = '';
     try {
       await api.disconnect(selected.id);
+      selected = undefined;
+      captures = [];
+      capture = undefined;
+      contacts = [];
+      changes = [];
+      groups = [];
       await refreshAccounts();
     } catch (e) {
       error = String(e);
@@ -1185,6 +1862,7 @@
 
   function handleGlobalKeyDown(event: KeyboardEvent) {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      if (!hasData || pageView === 'onboarding') return;
       event.preventDefault();
       searchInputEl?.focus();
       searchInputEl?.select();
@@ -1194,6 +1872,7 @@
       return;
     }
     if (event.key === '/' && !['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName)) {
+      if (!hasData || pageView === 'onboarding') return;
       event.preventDefault();
       searchInputEl?.focus();
       searchInputEl?.select();
@@ -1218,13 +1897,47 @@
     window.addEventListener('keydown', handleGlobalKeyDown);
     window.addEventListener('click', handleWindowClick);
     colorScheme.addEventListener('change', syncSystemTheme);
-    api.scheduleState().then(value => { scheduled = value; scheduleReady = true; }).catch(e => { settingsError = 'Could not load the capture schedule: ' + String(e); });
-    // Load persisted column settings
+    api.getScheduleConfig()
+      .then((cfg) => {
+        scheduleConfig = cfg;
+        scheduled = cfg.enabled;
+        scheduleReady = true;
+      })
+      .catch(() => {
+        api.scheduleState()
+          .then((val) => {
+            scheduled = val;
+            scheduleConfig.enabled = val;
+            scheduleReady = true;
+          })
+          .catch(() => {
+            scheduleReady = true;
+          });
+      });
     try {
       const savedCols = localStorage.getItem('contacts_active_cols');
-      if (savedCols) activeColKeys = JSON.parse(savedCols);
+      if (savedCols) {
+        const parsed = JSON.parse(savedCols);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const validKeys: ColumnKey[] = ['name', 'job', 'email', 'phone', 'birthday', 'labels', 'address', 'notes', 'org', 'title'];
+          const filtered = parsed.filter((k: any) => validKeys.includes(k) && k !== 'name');
+          activeColKeys = ['name', ...filtered];
+        }
+      }
+      // Ensure at least 4 customizable slots (5 total) like Google Contacts
+      const defaults: ColumnKey[] = ['email', 'phone', 'birthday', 'labels', 'job', 'address'];
+      for (const defKey of defaults) {
+        if (activeColKeys.length >= 5) break;
+        if (!activeColKeys.includes(defKey)) {
+          activeColKeys = [...activeColKeys, defKey];
+        }
+      }
       const savedWidths = localStorage.getItem('contacts_col_widths');
       if (savedWidths) colWidths = { ...colWidths, ...JSON.parse(savedWidths) };
+      const savedSortField = localStorage.getItem('contacts_sort_field');
+      if (savedSortField === 'first' || savedSortField === 'last') nameSortField = savedSortField;
+      const savedSortDir = localStorage.getItem('contacts_sort_dir');
+      if (savedSortDir === 'asc' || savedSortDir === 'desc') nameSortDirection = savedSortDir;
     } catch (_) {}
 
     // Window maximized state check
@@ -1258,50 +1971,56 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header class="topbar" onmousedown={onTopbarMouseDown}>
     <div class="topbar-left" data-tauri-drag-region>
-      <button
-        class="icon-btn"
-        title="Main menu"
-        aria-label="Main menu"
-        onclick={() => sidebarCollapsed = !sidebarCollapsed}
-      >
-        <span class="material-symbols-outlined">menu</span>
-      </button>
+      {#if hasData && pageView !== 'onboarding'}
+        <button
+          class="icon-btn"
+          data-tooltip="Main menu"
+          data-tooltip-pos="bottom-left"
+          aria-label="Main menu"
+          onclick={() => sidebarCollapsed = !sidebarCollapsed}
+        >
+          <span class="material-symbols-outlined">menu</span>
+        </button>
+      {/if}
       <button
         class="app-brand"
         aria-label="Contact History home"
+        data-tooltip="Contact History home"
         style="background: none; border: none; padding: 0; text-align: left;"
-        onclick={() => { selectLabelFilter(null); navigate('contacts'); }}
+        onclick={() => { if (hasData) { selectLabelFilter(null); navigate('contacts'); } }}
       >
         <img class="brand-logo" src={brandLogo} alt="" />
         <span class="app-title">Contact History</span>
       </button>
     </div>
 
-    <!-- Draggable area around search -->
+    <!-- Draggable area around search with ample space -->
     <div class="topbar-drag-area" data-tauri-drag-region>
-      <div class="topbar-search-container {searchDropdownOpen && search.trim() ? 'has-dropdown' : ''}" data-tauri-drag-region="false">
-        <div class="topbar-search {searchDropdownOpen && search.trim() ? 'dropdown-open' : ''}">
-          <span class="material-symbols-outlined search-icon">search</span>
-          <input
-            type="text"
-            class="search-input"
-            placeholder="Search contacts (Ctrl+K)"
-            aria-label="Search contacts"
-            bind:this={searchInputEl}
-            bind:value={search}
-            oninput={onSearchInput}
-            onfocus={onSearchFocus}
-            onclick={onSearchFocus}
-            onkeydown={onSearchKeyDown}
-          />
-          {#if !search}
-            <span class="search-shortcut-badge" title="Press Ctrl+K to search">Ctrl K</span>
-          {:else}
-            <button class="search-clear-btn" aria-label="Clear search" onclick={clearSearch}>
-              <span class="material-symbols-outlined">close</span>
-            </button>
-          {/if}
-        </div>
+      <div class="topbar-drag-spacer" data-tauri-drag-region></div>
+      {#if hasData && pageView !== 'onboarding'}
+        <div class="topbar-search-container {searchDropdownOpen && search.trim() ? 'has-dropdown' : ''}" data-tauri-drag-region="false">
+          <div class="topbar-search {searchDropdownOpen && search.trim() ? 'dropdown-open' : ''}">
+            <span class="material-symbols-outlined search-icon">search</span>
+            <input
+              type="text"
+              class="search-input"
+              placeholder="Search contacts (Ctrl+K)"
+              aria-label="Search contacts"
+              bind:this={searchInputEl}
+              bind:value={search}
+              oninput={onSearchInput}
+              onfocus={onSearchFocus}
+              onclick={onSearchFocus}
+              onkeydown={onSearchKeyDown}
+            />
+            {#if !search}
+              <span class="search-shortcut-badge" data-tooltip="Press Ctrl+K to search">Ctrl K</span>
+            {:else}
+              <button class="search-clear-btn" aria-label="Clear search" data-tooltip="Clear search" onclick={clearSearch}>
+                <span class="material-symbols-outlined">close</span>
+              </button>
+            {/if}
+          </div>
 
         {#if searchDropdownOpen && search.trim()}
           <div class="search-dropdown-menu" bind:this={searchDropdownEl} role="listbox" data-tauri-drag-region="false">
@@ -1353,19 +2072,72 @@
           </div>
         {/if}
       </div>
+      {/if}
+      <div class="topbar-drag-spacer" data-tauri-drag-region></div>
     </div>
 
     <!-- Topbar Actions & Window Controls -->
     <div class="topbar-right">
       {#if captures.length > 0 && capture}
-        <button class="snapshot-chip" onclick={() => showSnapshotDropdown = !showSnapshotDropdown} title="Snapshot Timeline">
-          <span class="material-symbols-outlined">history</span>
-          <span>Snapshot #{capture.sequence}</span>
-          <span class="material-symbols-outlined" style="font-size: 16px;">arrow_drop_down</span>
-        </button>
+        <div class="snapshot-dropdown-container">
+          <button
+            class="snapshot-chip"
+            class:active={showSnapshotDropdown}
+            onclick={() => { showSnapshotDropdown = !showSnapshotDropdown; showAccountMenu = false; }}
+            data-tooltip="Snapshot timeline"
+            aria-haspopup="listbox"
+            aria-expanded={showSnapshotDropdown}
+          >
+            <span class="material-symbols-outlined">history</span>
+            <span>Snapshot #{capture.sequence}</span>
+            <span class="material-symbols-outlined" style="font-size: 16px;">
+              {showSnapshotDropdown ? 'arrow_drop_up' : 'arrow_drop_down'}
+            </span>
+          </button>
+
+          {#if showSnapshotDropdown}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="menu-scrim"
+              style="position: fixed; inset: 0; z-index: 101; background: transparent;"
+              onclick={() => showSnapshotDropdown = false}
+              role="presentation"
+            ></div>
+            <div class="popover snapshot-popover" role="listbox" aria-label="Archive snapshots">
+              <div class="popover-heading">
+                <span>Archive snapshots</span>
+                <span class="popover-count-tag">{captures.length} total</span>
+              </div>
+              <div class="snapshot-popover-list">
+                {#each captures as cap}
+                  <button
+                    type="button"
+                    class="snapshot-popover-item"
+                    class:selected={capture?.sequence === cap.sequence}
+                    onclick={() => { changeCapture(cap.sequence); showSnapshotDropdown = false; }}
+                    role="option"
+                    aria-selected={capture?.sequence === cap.sequence}
+                  >
+                    <div class="snapshot-item-left">
+                      <div class="snapshot-item-title">Snapshot #{cap.sequence}</div>
+                      <div class="snapshot-item-date">{formatCaptureTime(cap.committed_at)}</div>
+                    </div>
+                    <div class="snapshot-item-right">
+                      <span class="snapshot-item-badge">{cap.contact_count} contacts</span>
+                      {#if capture?.sequence === cap.sequence}
+                        <span class="material-symbols-outlined snapshot-active-check">check</span>
+                      {/if}
+                    </div>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
       {/if}
 
-      <button class="icon-btn" onclick={() => showSettingsModal = true} title="Settings">
+      <button class="icon-btn" onclick={() => showSettingsModal = true} data-tooltip="Settings" aria-label="Settings">
         <span class="material-symbols-outlined">settings</span>
       </button>
 
@@ -1374,7 +2146,8 @@
           class="account-avatar-btn"
           aria-expanded={showAccountMenu}
           aria-haspopup="true"
-          title={accountProfile?.name ? `${accountProfile.name} (${selected.email})` : selected.email}
+          data-tooltip={accountProfile?.name ? `${accountProfile.name} (${selected.email})` : selected.email}
+          aria-label={accountProfile?.name ? `${accountProfile.name} (${selected.email})` : selected.email}
           onclick={() => { showAccountMenu = !showAccountMenu; showSnapshotDropdown = false; }}
         >
           {#if accountProfile?.picture}
@@ -1390,15 +2163,17 @@
         </button>
       {/if}
 
+      <div class="topbar-drag-spacer-sm" data-tauri-drag-region></div>
+
       <!-- Windows Controls -->
       <div class="window-controls">
-        <button class="win-btn" onclick={winMinimize} title="Minimize">
+        <button class="win-btn" onclick={winMinimize} data-tooltip="Minimize" aria-label="Minimize">
           <span class="material-symbols-outlined">minimize</span>
         </button>
-        <button class="win-btn" onclick={winToggleMaximize} title={isMaximized ? 'Restore' : 'Maximize'}>
+        <button class="win-btn" onclick={winToggleMaximize} data-tooltip={isMaximized ? 'Restore' : 'Maximize'} aria-label={isMaximized ? 'Restore' : 'Maximize'}>
           <span class="material-symbols-outlined">{isMaximized ? 'filter_none' : 'crop_square'}</span>
         </button>
-        <button class="win-btn win-close" onclick={winClose} title="Close">
+        <button class="win-btn win-close" onclick={winClose} data-tooltip="Close" aria-label="Close">
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
@@ -1507,13 +2282,22 @@
 
   <!-- Body Content -->
   <div class="content-body">
-    <!-- Google Contacts Sidebar -->
-    <aside class="sidebar" class:collapsed={sidebarCollapsed}>
+    {#if hasData && pageView !== 'onboarding'}
+      <!-- Google Contacts Sidebar -->
+      <aside class="sidebar" class:collapsed={sidebarCollapsed}>
       <!-- Create / Capture Button -->
       <div class="create-btn-container">
-        <button class="capture-btn" onclick={captureNow} disabled={busy || !selected}>
-          <span class="material-symbols-outlined plus-icon">add</span>
-          <span>Capture now</span>
+        <button
+          class="capture-btn"
+          class:busy
+          onclick={captureNow}
+          disabled={busy || !selected}
+          data-tooltip={busy ? 'Capturing snapshot...' : 'Capture snapshot from Google Contacts'}
+        >
+          <span class="material-symbols-outlined capture-icon" class:spin={busy}>
+            {busy ? 'sync' : 'photo_camera'}
+          </span>
+          <span>{busy ? 'Capturing...' : 'Capture now'}</span>
         </button>
       </div>
 
@@ -1551,11 +2335,30 @@
           <span class="material-symbols-outlined nav-icon">upload</span>
           <span class="nav-label">Import CSV</span>
         </button>
-        <button class="nav-item" onclick={() => exportSelected('csv')}>
+        <button
+          class="nav-item"
+          onclick={() => exportSelected('csv')}
+          disabled={!capture || capture.contact_count === 0}
+          title={!capture || capture.contact_count === 0 ? 'No contact data to export' : 'Export contacts to CSV'}
+        >
           <span class="material-symbols-outlined nav-icon">download</span>
           <span class="nav-label">Export CSV</span>
         </button>
-        <button class="nav-item" onclick={backupSelected}>
+        <button
+          class="nav-item"
+          onclick={openPhotoExport}
+          disabled={!capture || capture.contact_count === 0}
+          title={!capture || capture.contact_count === 0 ? 'No contact data to export' : 'Export contact profile photos in highest resolution'}
+        >
+          <span class="material-symbols-outlined nav-icon">photo_library</span>
+          <span class="nav-label">Export Photos</span>
+        </button>
+        <button
+          class="nav-item"
+          onclick={backupSelected}
+          disabled={!selected || captures.length === 0}
+          title={!selected || captures.length === 0 ? 'No archive data to back up' : 'Backup archive'}
+        >
           <span class="material-symbols-outlined nav-icon">archive</span>
           <span class="nav-label">Backup archive</span>
         </button>
@@ -1565,38 +2368,29 @@
         </button>
       </div>
 
-      <!-- Labels Section (Per-label view matching Screenshot 3) -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-header">
-          <span>Labels</span>
-          <button class="section-add-btn" title="Labels list">
-            <span class="material-symbols-outlined" style="font-size: 18px;">label</span>
-          </button>
+      <!-- Labels Section -->
+      {#if groups.length > 0}
+        <div class="sidebar-section">
+          <div class="sidebar-section-header">Labels</div>
+
+          {#each groups as group}
+            <button
+              class="nav-item"
+              class:active={pageView === 'contacts' && selectedGroup === group.resource_name}
+              onclick={() => { selectLabelFilter(group.resource_name); navigate('contacts'); }}
+              title={group.name}
+            >
+              <span class="material-symbols-outlined nav-icon" class:icon-filled={selectedGroup === group.resource_name}>
+                label
+              </span>
+              <span class="nav-label">{group.name}</span>
+              {#if group.member_count !== null && group.member_count !== undefined}
+                <span class="nav-count">{group.member_count}</span>
+              {/if}
+            </button>
+          {/each}
         </div>
-
-        {#each groups as group}
-          <button
-            class="nav-item"
-            class:active={pageView === 'contacts' && selectedGroup === group.resource_name}
-            onclick={() => { selectLabelFilter(group.resource_name); navigate('contacts'); }}
-            title={group.name}
-          >
-            <span class="material-symbols-outlined nav-icon" class:icon-filled={selectedGroup === group.resource_name}>
-              label
-            </span>
-            <span class="nav-label">{group.name}</span>
-            {#if group.member_count !== null && group.member_count !== undefined}
-              <span class="nav-count">{group.member_count}</span>
-            {/if}
-          </button>
-        {/each}
-
-        {#if groups.length === 0 && capture}
-          <div style="padding: 6px 16px; font-size: 12px; color: var(--google-text-secondary);">
-            No labels in snapshot
-          </div>
-        {/if}
-      </div>
+      {/if}
 
     </aside>
 
@@ -1606,269 +2400,662 @@
         {#if detail}
           <!-- Pixel-Perfect Contact Detail View (Screenshot 2) -->
           <div class="detail-view">
-            <!-- Detail Top Navigation -->
-            <div class="detail-top-nav">
-              <button class="icon-btn" onclick={() => detail = undefined} title="Back to list">
-                <span class="material-symbols-outlined">arrow_back</span>
-              </button>
-              <div class="detail-nav-actions">
-                {#if isFavourite(detail)}
-                  <span class="star-indicator" title="Starred contact" style="margin-right: 4px;">
-                    <span class="material-symbols-outlined icon-filled" style="color: var(--favorite); font-size: 22px;">star</span>
-                  </span>
-                {/if}
-                <button class="edit-btn" title="Snapshot version">
-                  <span class="material-symbols-outlined" style="font-size: 16px;">history</span>
-                  <span>Version #{detail.version}</span>
+            <!-- ── Sticky Contact Header (pinned on scroll) ─────────────────── -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="detail-sticky-header" onclick={(e) => { if (showDetailMenu && !(e.target as HTMLElement).closest('.detail-menu-container')) showDetailMenu = false; }}>
+              <!-- Top Navigation Row -->
+              <div class="detail-top-nav">
+                <button class="icon-btn" onclick={() => detail = undefined} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
+                  <span class="material-symbols-outlined">arrow_back</span>
                 </button>
-                <button class="icon-btn" onclick={() => showRawDataModal = true} title="View raw contact data">
-                  <span class="material-symbols-outlined">data_object</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- Detail Hero Avatar & Names -->
-            <div class="detail-hero">
-              <div class="hero-avatar">
-                {#if getAvatarSource(detail, media)}
-                  <img
-                    src={getAvatarSource(detail, media)}
-                    alt={getDisplayName(detail)}
-                    referrerpolicy="no-referrer"
-                    onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
-                    onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
-                  />
-                {/if}
-                <span>{getInitials(getDisplayName(detail))}</span>
-              </div>
-              <div class="hero-info">
-                <h1 class="hero-name">{getDisplayName(detail)}</h1>
-                {#if getNickname(detail.payload)}
-                  <span class="hero-nickname">{getNickname(detail.payload)}</span>
-                {/if}
-              </div>
-            </div>
-
-            <!-- Action Circles Row (Communication Actions) -->
-            {#if getPrimaryEmail(detail.payload) || getPrimaryPhone(detail.payload) || getPrimaryAddress(detail.payload)}
-              <div class="hero-action-buttons">
-                {#if getPrimaryEmail(detail.payload)}
-                  <div class="action-circle-group">
-                    <a
-                      href="mailto:{getPrimaryEmail(detail.payload)}"
-                      class="action-circle-btn"
-                      title="Send email to {getPrimaryEmail(detail.payload)}"
-                    >
-                      <span class="material-symbols-outlined">mail</span>
-                    </a>
-                    <span class="action-circle-label">Email</span>
+                <!-- Contact name (visible in sticky state when scrolled) -->
+                <span class="detail-sticky-name">{getDisplayName(detail)}</span>
+                <div class="detail-nav-actions">
+                  {#if isFavourite(detail)}
+                    <span class="star-indicator" data-tooltip="Starred contact" data-tooltip-pos="bottom">
+                      <span class="material-symbols-outlined icon-filled" style="color: var(--favorite); font-size: 22px;">star</span>
+                    </span>
+                  {/if}
+                  <div class="detail-version-pill" data-tooltip="Snapshot version #{detail.version}" data-tooltip-pos="bottom">
+                    <span class="material-symbols-outlined" style="font-size: 15px;">history</span>
+                    <span>v{detail.version}</span>
                   </div>
-                {/if}
-                {#if getPrimaryPhone(detail.payload)}
-                  <div class="action-circle-group">
-                    <a
-                      href="tel:{getPrimaryPhone(detail.payload)}"
-                      class="action-circle-btn"
-                      title="Call {getPrimaryPhone(detail.payload)}"
-                    >
-                      <span class="material-symbols-outlined">call</span>
-                    </a>
-                    <span class="action-circle-label">Call</span>
-                  </div>
-                {/if}
-                {#if getPrimaryAddress(detail.payload)}
-                  <div class="action-circle-group">
+                  <!-- Three-dots More Options Menu -->
+                  <div class="detail-menu-container">
                     <button
-                      class="action-circle-btn"
-                      title="Open address in Google Maps"
-                      onclick={() => api.openExternalUrl(`https://maps.google.com/?q=${encodeURIComponent(getPrimaryAddress(detail!.payload))}`)}
+                      class="icon-btn"
+                      onclick={() => (showDetailMenu = !showDetailMenu)}
+                      aria-label="More options"
+                      aria-haspopup="true"
+                      aria-expanded={showDetailMenu}
+                      data-tooltip="More options"
+                      data-tooltip-pos="bottom"
                     >
-                      <span class="material-symbols-outlined">location_on</span>
+                      <span class="material-symbols-outlined">more_vert</span>
                     </button>
-                    <span class="action-circle-label">Maps</span>
+                    {#if showDetailMenu}
+                      <div class="detail-menu" role="menu">
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; showRawDataModal = true; }}>
+                          <span class="material-symbols-outlined">data_object</span>
+                          <span>View raw payload</span>
+                        </button>
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactJson(detail!); }}>
+                          <span class="material-symbols-outlined">download</span>
+                          <span>Export JSON</span>
+                        </button>
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactVcf(detail!); }}>
+                          <span class="material-symbols-outlined">contact_page</span>
+                          <span>Export vCard</span>
+                        </button>
+                        <div class="detail-menu-divider"></div>
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; window.print(); }}>
+                          <span class="material-symbols-outlined">print</span>
+                          <span>Print</span>
+                        </button>
+                      </div>
+                    {/if}
                   </div>
-                {/if}
+                </div>
               </div>
-            {/if}
 
-            <!-- Label Membership Chips Row -->
-            {#if getContactLabels(detail.payload).length > 0}
-              <div class="detail-chips-row">
-                {#each getContactLabels(detail.payload) as label}
-                  <div class="detail-chip">
-                    <span class="material-symbols-outlined">label</span>
-                    <span>{label}</span>
+              <!-- Detail Hero Avatar & Names -->
+              <div class="detail-hero">
+                <button
+                  type="button"
+                  class="hero-avatar"
+                  onclick={() => showPhotosModal = true}
+                  aria-label="View photos for {getDisplayName(detail)}"
+                  data-tooltip="View photos"
+                  data-tooltip-pos="bottom"
+                >
+                  {#if getAvatarSource(detail, media)}
+                    <img
+                      src={getAvatarSource(detail, media)}
+                      alt={getDisplayName(detail)}
+                      referrerpolicy="no-referrer"
+                      onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                      onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
+                    />
+                  {/if}
+                  <span>{getInitials(getDisplayName(detail))}</span>
+                  <div class="hero-avatar-overlay">
+                    <span class="material-symbols-outlined">photo_camera</span>
                   </div>
-                {/each}
+                </button>
+                <div class="hero-info">
+                  <h1 class="hero-name">{getDisplayName(detail)}</h1>
+                  {#if getNickname(detail.payload)}
+                    <span class="hero-nickname">{getNickname(detail.payload)}</span>
+                  {/if}
+                </div>
               </div>
-            {/if}
+
+              <!-- Action Circles Row with Divider Line -->
+              {#if detail.payload}
+                {@const primaryEmail = getPrimaryEmail(detail.payload)}
+                {@const hasEmail = Boolean(primaryEmail)}
+                <div class="hero-actions-container">
+                  <div class="hero-action-buttons">
+                    <!-- Email -->
+                    <div class="action-circle-group">
+                      {#if hasEmail}
+                        <a href="mailto:{primaryEmail}" class="action-circle-btn" data-tooltip="Send email to {primaryEmail}" data-tooltip-pos="top" aria-label="Send email">
+                          <span class="material-symbols-outlined">mail</span>
+                        </a>
+                      {:else}
+                        <div class="action-circle-btn disabled" aria-disabled="true" data-tooltip="No email address" data-tooltip-pos="top" aria-label="Email unavailable">
+                          <span class="material-symbols-outlined">mail</span>
+                        </div>
+                      {/if}
+                      <span class="action-circle-label">Email</span>
+                    </div>
+
+                    <!-- Schedule -->
+                    <div class="action-circle-group">
+                      {#if hasEmail}
+                        <button type="button" class="action-circle-btn" onclick={() => api.openExternalUrl(`https://calendar.google.com/calendar/r/eventedit?add=${encodeURIComponent(primaryEmail)}`)} data-tooltip="Schedule event with {primaryEmail}" data-tooltip-pos="top" aria-label="Schedule event">
+                          <span class="material-symbols-outlined">event</span>
+                        </button>
+                      {:else}
+                        <div class="action-circle-btn disabled" aria-disabled="true" data-tooltip="No email address to schedule" data-tooltip-pos="top" aria-label="Schedule unavailable">
+                          <span class="material-symbols-outlined">event</span>
+                        </div>
+                      {/if}
+                      <span class="action-circle-label">Schedule</span>
+                    </div>
+
+                    <!-- Chat -->
+                    <div class="action-circle-group">
+                      {#if hasEmail}
+                        <a href="mailto:{primaryEmail}" class="action-circle-btn" data-tooltip="Chat with {primaryEmail}" data-tooltip-pos="top" aria-label="Chat">
+                          <span class="material-symbols-outlined">chat</span>
+                        </a>
+                      {:else}
+                        <div class="action-circle-btn disabled" aria-disabled="true" data-tooltip="No email address for chat" data-tooltip-pos="top" aria-label="Chat unavailable">
+                          <span class="material-symbols-outlined">chat</span>
+                        </div>
+                      {/if}
+                      <span class="action-circle-label">Chat</span>
+                    </div>
+
+                    <!-- Video -->
+                    <div class="action-circle-group">
+                      {#if hasEmail}
+                        <button type="button" class="action-circle-btn" onclick={() => api.openExternalUrl('https://meet.google.com/new')} data-tooltip="Start video meeting" data-tooltip-pos="top" aria-label="Start video meeting">
+                          <span class="material-symbols-outlined">videocam</span>
+                        </button>
+                      {:else}
+                        <div class="action-circle-btn disabled" aria-disabled="true" data-tooltip="No video meeting available" data-tooltip-pos="top" aria-label="Video unavailable">
+                          <span class="material-symbols-outlined">videocam</span>
+                        </div>
+                      {/if}
+                      <span class="action-circle-label">Video</span>
+                    </div>
+                  </div>
+                  <div class="hero-actions-divider"></div>
+                </div>
+              {/if}
+
+              <!-- Label Membership Chips Row -->
+              {#if getContactLabelItems(detail.payload).length > 0}
+                <div class="detail-chips-row">
+                  {#each getContactLabelItems(detail.payload) as lbl (lbl.resourceName)}
+                    <button
+                      type="button"
+                      class="detail-chip"
+                      class:active={selectedGroup === lbl.resourceName}
+                      onclick={() => { selectLabelFilter(lbl.resourceName); navigate('contacts'); }}
+                      data-tooltip="Filter by label: {lbl.name}"
+                      data-tooltip-pos="top"
+                      aria-label="Filter contacts by label: {lbl.name}"
+                    >
+                      <span class="material-symbols-outlined">label</span>
+                      <span>{lbl.name}</span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+            <!-- ── End Sticky Header ──────────────────────────────────────────── -->
 
             <!-- Structured Details Cards Grid -->
             <div class="detail-cards-grid">
-              <!-- Left Card: Contact Details with In-line Labels and Copy Pop-ups -->
-              <div class="detail-card">
-                <h2 class="card-title">Contact details</h2>
-                <div class="field-list">
-                  {#each getAllEmails(detail.payload) as email, idx}
-                    <div class="field-item">
-                      <span class="material-symbols-outlined field-icon">mail</span>
-                      <div class="field-content">
-                        <a href="mailto:{email.value}" class="field-value">{email.value}</a>
-                        <span class="field-meta">· {email.type}</span>
+              <!-- Left Column: Contact Details + Relocated Archive Snapshot -->
+              <div class="detail-column-left">
+                <div class="detail-card">
+                  <h2 class="card-title">Contact details</h2>
+                  <div class="field-list">
+                    {#if getAllEmails(detail.payload).length === 0}
+                      <div class="field-item">
+                        <span class="material-symbols-outlined field-icon">mail</span>
+                        <div class="field-content">
+                          <span class="field-value field-placeholder">Add email</span>
+                        </div>
                       </div>
-                      <div class="field-actions">
-                        <button
-                          class="field-copy-btn"
-                          title="Copy email"
-                          onclick={() => copyFieldValue(`email-${idx}`, email.value)}
-                        >
-                          <span class="material-symbols-outlined">content_copy</span>
-                        </button>
-                        {#if copiedFieldKey === `email-${idx}`}
-                          <div class="copy-popup-badge">Copied!</div>
-                        {/if}
-                      </div>
-                    </div>
-                  {/each}
+                    {:else}
+                      {#each getAllEmails(detail.payload) as email, idx}
+                        <div class="field-item">
+                          <!-- Show icon only on first email row; spacer on subsequent rows -->
+                          {#if idx === 0}
+                            <span class="material-symbols-outlined field-icon">mail</span>
+                          {:else}
+                            <span class="field-icon-spacer"></span>
+                          {/if}
+                          <div class="field-content">
+                            <a href="mailto:{email.value}" class="field-value">{email.value}</a>
+                            <span class="field-meta">• {email.type}</span>
+                            <div class="field-actions">
+                              <button
+                                class="field-copy-btn"
+                                data-tooltip="Copy email"
+                                data-tooltip-pos="top"
+                                aria-label="Copy email"
+                                onclick={() => copyFieldValue(`email-${idx}`, email.value)}
+                              >
+                                <span class="material-symbols-outlined">content_copy</span>
+                              </button>
+                              {#if copiedFieldKey === `email-${idx}`}
+                                <div class="copy-popup-badge">
+                                  <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                  <span>Copied!</span>
+                                </div>
+                              {/if}
+                            </div>
+                          </div>
+                        </div>
+                      {/each}
+                    {/if}
 
-                  {#each getAllPhones(detail.payload) as phone, idx}
-                    <div class="field-item">
-                      <span class="material-symbols-outlined field-icon">call</span>
-                      <div class="field-content">
-                        <a href="tel:{phone.value}" class="field-value">{phone.value}</a>
-                        <span class="field-meta">· {phone.type}</span>
-                      </div>
-                      <div class="field-actions">
-                        <button
-                          class="field-copy-btn"
-                          title="Copy phone"
-                          onclick={() => copyFieldValue(`phone-${idx}`, phone.value)}
-                        >
-                          <span class="material-symbols-outlined">content_copy</span>
-                        </button>
-                        {#if copiedFieldKey === `phone-${idx}`}
-                          <div class="copy-popup-badge">Copied!</div>
+                    {#each getAllPhones(detail.payload) as phone, idx}
+                      <div class="field-item">
+                        <!-- Show icon only on first phone row; spacer on subsequent rows -->
+                        {#if idx === 0}
+                          <span class="material-symbols-outlined field-icon">call</span>
+                        {:else}
+                          <span class="field-icon-spacer"></span>
                         {/if}
+                        <div class="field-content">
+                          <a href="tel:{phone.value}" class="field-value">{phone.formatted || phone.value}</a>
+                          <span class="field-meta">• {phone.type}</span>
+                          <div class="field-actions">
+                            <button
+                              class="field-copy-btn"
+                              data-tooltip="Copy phone"
+                              data-tooltip-pos="top"
+                              aria-label="Copy phone"
+                              onclick={() => copyFieldValue(`phone-${idx}`, phone.value)}
+                            >
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            {#if copiedFieldKey === `phone-${idx}`}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  {/each}
+                    {/each}
 
-                  {#if getBirthday(detail.payload)}
-                    <div class="field-item">
-                      <span class="material-symbols-outlined field-icon">cake</span>
-                      <div class="field-content">
-                        <span class="field-value text-plain">{getBirthday(detail.payload)}</span>
-                        <span class="field-meta">· Birthday</span>
+                    {#if getBirthday(detail.payload)}
+                      <div class="field-item">
+                        <span class="material-symbols-outlined field-icon">cake</span>
+                        <div class="field-content">
+                          <span class="field-value text-plain">{getBirthday(detail.payload)}</span>
+                          <span class="field-meta">• Birthday</span>
+                          <div class="field-actions">
+                            <button
+                              class="field-copy-btn"
+                              data-tooltip="Copy birthday"
+                              data-tooltip-pos="top"
+                              aria-label="Copy birthday"
+                              onclick={() => copyFieldValue('birthday', getBirthday(detail!.payload))}
+                            >
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            {#if copiedFieldKey === 'birthday'}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
                       </div>
-                      <div class="field-actions">
-                        <button
-                          class="field-copy-btn"
-                          title="Copy birthday"
-                          onclick={() => copyFieldValue('birthday', getBirthday(detail!.payload))}
-                        >
-                          <span class="material-symbols-outlined">content_copy</span>
-                        </button>
-                        {#if copiedFieldKey === 'birthday'}
-                          <div class="copy-popup-badge">Copied!</div>
-                        {/if}
-                      </div>
-                    </div>
-                  {/if}
+                    {/if}
 
-                  {#if getOrganization(detail.payload).org || getOrganization(detail.payload).title}
-                    {@const orgInfo = [getOrganization(detail.payload).title, getOrganization(detail.payload).org].filter(Boolean).join(' at ')}
-                    <div class="field-item">
-                      <span class="material-symbols-outlined field-icon">domain</span>
-                      <div class="field-content">
-                        <span class="field-value text-plain">{orgInfo}</span>
-                        <span class="field-meta">· Job info</span>
+                    {#if getOrganization(detail.payload).org || getOrganization(detail.payload).title}
+                      {@const orgInfo = [getOrganization(detail.payload).title, getOrganization(detail.payload).org].filter(Boolean).join(' at ')}
+                      <div class="field-item">
+                        <span class="material-symbols-outlined field-icon">domain</span>
+                        <div class="field-content">
+                          <span class="field-value text-plain">{orgInfo}</span>
+                          <span class="field-meta">• Job info</span>
+                          <div class="field-actions">
+                            <button
+                              class="field-copy-btn"
+                              data-tooltip="Copy job info"
+                              data-tooltip-pos="top"
+                              aria-label="Copy job info"
+                              onclick={() => copyFieldValue('org', orgInfo)}
+                            >
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            {#if copiedFieldKey === 'org'}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
                       </div>
-                      <div class="field-actions">
-                        <button
-                          class="field-copy-btn"
-                          title="Copy job info"
-                          onclick={() => copyFieldValue('org', orgInfo)}
-                        >
-                          <span class="material-symbols-outlined">content_copy</span>
-                        </button>
-                        {#if copiedFieldKey === 'org'}
-                          <div class="copy-popup-badge">Copied!</div>
-                        {/if}
-                      </div>
-                    </div>
-                  {/if}
+                    {/if}
 
-                  {#if getPrimaryAddress(detail.payload)}
-                    {@const addr = getPrimaryAddress(detail.payload)}
-                    <div class="field-item">
-                      <span class="material-symbols-outlined field-icon">location_on</span>
-                      <div class="field-content">
-                        <button
-                          class="field-value field-link"
-                          title="Open address in Google Maps"
-                          onclick={() => api.openExternalUrl(`https://maps.google.com/?q=${encodeURIComponent(addr)}`)}
-                        >
-                          {addr}
-                        </button>
-                        <span class="field-meta">· Address</span>
-                      </div>
-                      <div class="field-actions">
-                        <button
-                          class="field-copy-btn"
-                          title="Copy address"
-                          onclick={() => copyFieldValue('address', addr)}
-                        >
-                          <span class="material-symbols-outlined">content_copy</span>
-                        </button>
-                        {#if copiedFieldKey === 'address'}
-                          <div class="copy-popup-badge">Copied!</div>
+                    {#each getAllAddresses(detail.payload) as addr, idx}
+                      <div class="field-item field-item--multiline">
+                        {#if idx === 0}
+                          <span class="material-symbols-outlined field-icon" style="align-self: flex-start; margin-top: 1px;">location_on</span>
+                        {:else}
+                          <span class="field-icon-spacer" style="align-self: flex-start;"></span>
                         {/if}
+                        <div class="field-content field-content--column">
+                          <!-- Entire address block is a clickable link to Google Maps -->
+                          <a
+                            class="field-address-lines field-address-link"
+                            href={getAddressMapsUrl(addr)}
+                            onclick={(e) => { e.preventDefault(); api.openExternalUrl(getAddressMapsUrl(addr)); }}
+                            aria-label="Open {addr.copyValue} in Google Maps"
+                          >
+                            {#each addr.lines as line}
+                              <span class="field-value field-address-line">{line}</span>
+                            {/each}
+                          </a>
+                          <div class="field-address-bottom-row">
+                            <span class="field-meta">• {addr.type}</span>
+                            <div class="field-actions">
+                              <button
+                                class="field-copy-btn"
+                                data-tooltip="Copy address"
+                                data-tooltip-pos="top"
+                                aria-label="Copy address"
+                                onclick={() => copyFieldValue(`address-${idx}`, addr.copyValue)}
+                              >
+                                <span class="material-symbols-outlined">content_copy</span>
+                              </button>
+                              <button
+                                class="field-copy-btn"
+                                data-tooltip="Open in Google Maps"
+                                data-tooltip-pos="top"
+                                aria-label="Open in Google Maps"
+                                onclick={() => api.openExternalUrl(getAddressMapsUrl(addr))}
+                              >
+                                <span class="material-symbols-outlined">open_in_new</span>
+                              </button>
+                              {#if copiedFieldKey === `address-${idx}`}
+                                <div class="copy-popup-badge">
+                                  <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                  <span>Copied!</span>
+                                </div>
+                              {/if}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  {/if}
+                    {/each}
 
-                  {#if getNotes(detail.payload)}
-                    {@const notes = getNotes(detail.payload)}
-                    <div class="field-item">
-                      <span class="material-symbols-outlined field-icon">notes</span>
-                      <div class="field-content">
-                        <span class="field-value text-plain" style="white-space: pre-wrap;">{notes}</span>
-                        <span class="field-meta">· Notes</span>
+                    {#if getNotes(detail.payload)}
+                      {@const notes = getNotes(detail.payload)}
+                      <div class="field-item">
+                        <span class="material-symbols-outlined field-icon">notes</span>
+                        <div class="field-content">
+                          <span class="field-value text-plain" style="white-space: pre-wrap;">{notes}</span>
+                          <span class="field-meta">• Notes</span>
+                          <div class="field-actions">
+                            <button
+                              class="field-copy-btn"
+                              data-tooltip="Copy notes"
+                              data-tooltip-pos="top"
+                              aria-label="Copy notes"
+                              onclick={() => copyFieldValue('notes', notes)}
+                            >
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            {#if copiedFieldKey === 'notes'}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
                       </div>
-                      <div class="field-actions">
-                        <button
-                          class="field-copy-btn"
-                          title="Copy notes"
-                          onclick={() => copyFieldValue('notes', notes)}
-                        >
-                          <span class="material-symbols-outlined">content_copy</span>
-                        </button>
-                        {#if copiedFieldKey === 'notes'}
-                          <div class="copy-popup-badge">Copied!</div>
+                    {/if}
+
+                    <!-- ── Events (non-birthday: anniversaries, custom, etc.) ── -->
+                    {#each getAllEvents(detail.payload) as evt, idx}
+                      <div class="field-item">
+                        {#if idx === 0}
+                          <span class="material-symbols-outlined field-icon">event</span>
+                        {:else}
+                          <span class="field-icon-spacer"></span>
                         {/if}
+                        <div class="field-content">
+                          <span class="field-value text-plain">{evt.date}</span>
+                          <span class="field-meta">• {evt.type}</span>
+                          <div class="field-actions">
+                            <button class="field-copy-btn" data-tooltip="Copy date" data-tooltip-pos="top" aria-label="Copy date" onclick={() => copyFieldValue(`event-${idx}`, evt.date)}>
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            {#if copiedFieldKey === `event-${idx}`}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
                       </div>
+                    {/each}
+
+                    <!-- ── Related People ──────────────────────────────────────── -->
+                    {#each getAllRelations(detail.payload) as rel, idx}
+                      <div class="field-item">
+                        {#if idx === 0}
+                          <span class="material-symbols-outlined field-icon">group</span>
+                        {:else}
+                          <span class="field-icon-spacer"></span>
+                        {/if}
+                        <div class="field-content">
+                          <span class="field-value text-plain">{rel.name}</span>
+                          <span class="field-meta">• {rel.type}</span>
+                          <div class="field-actions">
+                            <button class="field-copy-btn" data-tooltip="Copy name" data-tooltip-pos="top" aria-label="Copy name" onclick={() => copyFieldValue(`rel-${idx}`, rel.name)}>
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            {#if copiedFieldKey === `rel-${idx}`}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
+                      </div>
+                    {/each}
+
+                    <!-- ── Websites / URLs ─────────────────────────────────────── -->
+                    {#each getAllUrls(detail.payload) as url, idx}
+                      <div class="field-item">
+                        {#if idx === 0}
+                          <span class="material-symbols-outlined field-icon">link</span>
+                        {:else}
+                          <span class="field-icon-spacer"></span>
+                        {/if}
+                        <div class="field-content">
+                          <a
+                            class="field-value"
+                            href={url.url}
+                            onclick={(e) => { e.preventDefault(); api.openExternalUrl(url.url); }}
+                          >{url.url}</a>
+                          <span class="field-meta">• {url.type}</span>
+                          <div class="field-actions">
+                            <button class="field-copy-btn" data-tooltip="Copy URL" data-tooltip-pos="top" aria-label="Copy URL" onclick={() => copyFieldValue(`url-${idx}`, url.url)}>
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            <button class="field-copy-btn" data-tooltip="Open URL" data-tooltip-pos="top" aria-label="Open URL" onclick={() => api.openExternalUrl(url.url)}>
+                              <span class="material-symbols-outlined">open_in_new</span>
+                            </button>
+                            {#if copiedFieldKey === `url-${idx}`}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
+                      </div>
+                    {/each}
+
+                    <!-- ── Custom / User-Defined Fields ───────────────────────── -->
+                    {#each getAllUserDefined(detail.payload) as ud, idx}
+                      <div class="field-item">
+                        {#if idx === 0}
+                          <span class="material-symbols-outlined field-icon">list_alt</span>
+                        {:else}
+                          <span class="field-icon-spacer"></span>
+                        {/if}
+                        <div class="field-content">
+                          <span class="field-value text-plain">{ud.value}</span>
+                          <span class="field-meta">• {ud.key}</span>
+                          <div class="field-actions">
+                            <button class="field-copy-btn" data-tooltip="Copy value" data-tooltip-pos="top" aria-label="Copy value" onclick={() => copyFieldValue(`ud-${idx}`, ud.value)}>
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            {#if copiedFieldKey === `ud-${idx}`}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+
+
+                <!-- Relocated Archive Snapshot Card (Left Column) -->
+                <div class="snapshot-card">
+                  <h2 class="card-title">
+                    <span>Archive Snapshot</span>
+                    <span class="material-symbols-outlined" style="color: var(--google-blue); font-size: 18px;">verified</span>
+                  </h2>
+                  <div class="snapshot-info-grid">
+                    <div class="snapshot-info-row">
+                      <span class="snapshot-info-label">
+                        <span class="material-symbols-outlined" style="font-size: 16px;">photo_library</span>
+                        <span>Current Snapshot</span>
+                      </span>
+                      <span class="snapshot-info-value">Snapshot #{capture?.sequence}</span>
                     </div>
-                  {/if}
+                    <div class="snapshot-info-row">
+                      <span class="snapshot-info-label">
+                        <span class="material-symbols-outlined" style="font-size: 16px;">calendar_today</span>
+                        <span>Captured Date</span>
+                      </span>
+                      <span class="snapshot-info-value">{formatCaptureTime(capture?.committed_at)}</span>
+                    </div>
+                    <div class="snapshot-info-row">
+                      <span class="snapshot-info-label">
+                        <span class="material-symbols-outlined" style="font-size: 16px;">tag</span>
+                        <span>Snapshot Revision</span>
+                      </span>
+                      <span class="snapshot-info-value">#{detail.version}</span>
+                    </div>
+                    <div class="snapshot-info-row">
+                      <span class="snapshot-info-label">
+                        <span class="material-symbols-outlined" style="font-size: 16px;">fingerprint</span>
+                        <span>Resource</span>
+                      </span>
+                      <span class="snapshot-info-value"><code>{detail.resource_name}</code></span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <!-- Right Card: Capture History / Timeline -->
-              <div class="detail-card">
-                <h2 class="card-title">Archive History</h2>
-                <div class="history-timeline">
-                  <div class="history-item">
-                    <div class="history-item-left">
-                      <span class="material-symbols-outlined" style="color: var(--google-blue); font-size: 18px;">verified</span>
-                      <span>Snapshot #{capture?.sequence}</span>
-                    </div>
-                    <span class="history-date">{formatCaptureTime(capture?.committed_at)}</span>
+              <!-- Right Card: Full History Log with Last Edited & First Seen Dates -->
+              <div class="history-log-card">
+                <div class="history-card-header">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <h2 class="card-title" style="margin-bottom: 0;">History</h2>
+                    <span class="material-symbols-outlined" style="color: var(--google-text-secondary); font-size: 18px; cursor: help;" data-tooltip="A chronological log of every change captured for this contact" data-tooltip-pos="top">help</span>
                   </div>
-                  <div style="font-size: 12px; color: var(--google-text-secondary); margin-top: 12px; line-height: 1.5;">
-                    Captured resource: <code>{detail.resource_name}</code>
-                    <br />
-                    Schema revision: #{detail.version}
+                  {#if contactHistory.length > 0}
+                    <span class="history-count-pill">{contactHistory.length} {contactHistory.length === 1 ? 'revision' : 'revisions'}</span>
+                  {/if}
+                </div>
+
+                <!-- Key Dates Bar: Last Edited & Added to Contacts -->
+                <div class="history-dates-bar">
+                  <div class="date-stat-card">
+                    <div class="date-stat-header">
+                      <span class="material-symbols-outlined">edit_calendar</span>
+                      <span>Last edited</span>
+                    </div>
+                    <div class="date-stat-value">{detailLastEdited.date}</div>
+                    {#if detailLastEdited.relative}
+                      <div class="date-stat-relative">{detailLastEdited.relative}</div>
+                    {/if}
+                  </div>
+                  <div class="date-stat-card">
+                    <div class="date-stat-header">
+                      <span class="material-symbols-outlined">person_add</span>
+                      <span>First seen</span>
+                    </div>
+                    <div class="date-stat-value">{detailFirstSeen.date}</div>
+                    {#if detailFirstSeen.relative}
+                      <div class="date-stat-relative">{detailFirstSeen.relative}</div>
+                    {/if}
                   </div>
                 </div>
+
+
+                <!-- Timeline Log Entries -->
+                {#if loadingHistory}
+                  <div style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 24px; color: var(--google-text-secondary); font-size: 13px;">
+                    <span class="material-symbols-outlined" style="animation: spin 1s linear infinite;">sync</span>
+                    <span>Loading history log...</span>
+                  </div>
+                {:else if contactHistory.length === 0}
+                  <div style="padding: 16px; text-align: center; color: var(--google-text-secondary); font-size: 13px;">
+                    No prior revisions recorded.
+                  </div>
+                {:else}
+                  <div class="history-log-timeline">
+                    {#each contactHistory as entry, idx (entry.version)}
+                      {@const isCurrent = idx === 0}
+                      {@const diff = computeContactDiff(entry.before, entry.after, groupMap)}
+                      {@const isExpanded = expandedHistoryVersions.has(entry.version)}
+                      <div class="history-entry-card" class:is-current={isCurrent}>
+                        <div class="history-entry-top">
+                          <div class="history-entry-meta">
+                            <span class="history-version-badge">Version #{entry.version}</span>
+                            {#if isCurrent}
+                              <span class="history-tag modified">Current</span>
+                            {/if}
+                            <span class="history-entry-snapshot">Snapshot #{entry.sequence}</span>
+                          </div>
+                          <span class="history-entry-date">{formatCaptureTime(entry.committed_at)}</span>
+                        </div>
+
+                        <div class="history-entry-badges">
+                          {#if entry.before === null}
+                            <span class="history-tag added">
+                              <span class="material-symbols-outlined" style="font-size: 13px;">add_circle</span>
+                              <span>First captured record</span>
+                            </span>
+                          {:else if entry.after === null}
+                            <span class="history-tag deleted">
+                              <span class="material-symbols-outlined" style="font-size: 13px;">delete</span>
+                              <span>Deleted</span>
+                            </span>
+                          {:else if diff.badges.length > 0}
+                            {#each diff.badges as badge}
+                              <span class="history-tag {badge.type}">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">{badge.icon}</span>
+                                <span>{badge.label}</span>
+                              </span>
+                            {/each}
+                          {:else}
+                            <span class="history-tag neutral">
+                              <span>Verified in snapshot</span>
+                            </span>
+                          {/if}
+                        </div>
+
+                        {#if entry.before !== null && entry.after !== null && diff.groups.length > 0}
+                          <button
+                            type="button"
+                            class="history-diff-toggle-btn"
+                            onclick={() => toggleHistoryVersionExpanded(entry.version)}
+                          >
+                            <span class="material-symbols-outlined" style="font-size: 14px;">{isExpanded ? 'expand_less' : 'expand_more'}</span>
+                            <span>{isExpanded ? 'Hide changes' : 'Show changes'}</span>
+                          </button>
+                          {#if isExpanded}
+                            <div class="history-diff-content">
+                              <FieldChanges before={entry.before} after={entry.after} labels={groupMap} />
+                            </div>
+                          {/if}
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
               </div>
             </div>
           </div>
@@ -1877,23 +3064,49 @@
           <div class="view-header">
             <h1 class="view-title">
               {#if activeGroup}
-                {activeGroup.name} ({activeGroup.member_count ?? contacts.length})
+                <span>{activeGroup.name} ({activeGroup.member_count ?? contacts.length})</span>
+                <button
+                  type="button"
+                  class="filter-clear-badge"
+                  onclick={() => selectLabelFilter(null)}
+                  title="Clear label filter (show all contacts)"
+                  aria-label="Clear label filter"
+                >
+                  <span class="material-symbols-outlined" style="font-size: 15px;">close</span>
+                  <span>Clear filter</span>
+                </button>
               {:else}
                 Contacts ({capture ? capture.contact_count : contacts.length})
               {/if}
             </h1>
             <div class="view-header-actions">
-              <button class="icon-btn" onclick={() => window.print()} title="Print">
+              <button class="icon-btn" onclick={() => window.print()} data-tooltip="Print" aria-label="Print">
                 <span class="material-symbols-outlined">print</span>
               </button>
-              <button class="icon-btn" onclick={() => exportSelected('csv')} title="Export">
+              <button
+                class="icon-btn"
+                onclick={() => exportSelected('csv')}
+                disabled={!capture || capture.contact_count === 0}
+                data-tooltip={!capture || capture.contact_count === 0 ? 'No contacts to export' : 'Export CSV'}
+                aria-label="Export CSV"
+              >
                 <span class="material-symbols-outlined">upload</span>
+              </button>
+              <button
+                class="icon-btn"
+                onclick={openPhotoExport}
+                disabled={!capture || capture.contact_count === 0}
+                data-tooltip={!capture || capture.contact_count === 0 ? 'No contacts to export' : 'Export Contact Photos'}
+                aria-label="Export Contact Photos"
+              >
+                <span class="material-symbols-outlined">photo_library</span>
               </button>
               <button
                 class="icon-btn"
                 class:active={showColCustomizer}
                 onclick={() => showColCustomizer = true}
-                title="Change column order and visibility"
+                data-tooltip="Change column order"
+                aria-label="Change column order"
               >
                 <span class="material-symbols-outlined">more_vert</span>
               </button>
@@ -1906,16 +3119,109 @@
                 <tr>
                   {#each activeColKeys as colKey}
                     {@const colDef = ALL_COLUMNS.find((c) => c.key === colKey)!}
-                    <th style="width: {colWidths[colKey]}px;">
-                      <div class="th-content">
-                        <span>{colDef.label}</span>
+                    <th style="width: {colWidths[colKey]}px;" class={colKey === 'name' ? 'th-name-col' : ''}>
+                      <div class="th-content {colKey === 'name' ? 'th-name-content' : ''}">
+                        {#if colKey === 'name'}
+                          <button
+                            type="button"
+                            class="th-sort-toggle-btn"
+                            onclick={toggleSortDirection}
+                            data-tooltip="Sort: {nameSortField === 'first' ? 'First' : 'Last'} name ({nameSortDirection === 'asc' ? 'A→Z' : 'Z→A'}) • Click to reverse"
+                            data-tooltip-pos="bottom-left"
+                            aria-label="Toggle sort direction"
+                          >
+                            <span class="th-col-label">{colDef ? colDef.label : 'Name'}</span>
+                            <span class="material-symbols-outlined th-sort-arrow" class:desc={nameSortDirection === 'desc'}>
+                              arrow_upward
+                            </span>
+                          </button>
+
+                          <div class="th-sort-menu-wrapper">
+                            <button
+                              type="button"
+                              class="th-sort-tune-btn"
+                              class:active={showSortMenu}
+                              onclick={(e) => { e.stopPropagation(); showSortMenu = !showSortMenu; }}
+                              data-tooltip={showSortMenu ? '' : 'Name sorting options'}
+                              data-tooltip-pos="bottom-left"
+                              aria-haspopup="menu"
+                              aria-expanded={showSortMenu}
+                            >
+                              <span class="material-symbols-outlined" style="font-size: 15px;">tune</span>
+                            </button>
+
+                            {#if showSortMenu}
+                              <!-- svelte-ignore a11y_click_events_have_key_events -->
+                              <!-- svelte-ignore a11y_no_static_element_interactions -->
+                              <div
+                                class="menu-scrim"
+                                style="position: fixed; inset: 0; z-index: 101; background: transparent;"
+                                onclick={() => showSortMenu = false}
+                                role="presentation"
+                              ></div>
+                              <div class="th-sort-popover" role="menu" aria-label="Sort options">
+                                <div class="sort-menu-heading">Sort by</div>
+                                <button
+                                  type="button"
+                                  class="sort-menu-item"
+                                  class:is-active={nameSortField === 'first'}
+                                  onclick={() => { setSortField('first'); showSortMenu = false; }}
+                                  role="menuitemradio"
+                                  aria-checked={nameSortField === 'first'}
+                                >
+                                  <span class="material-symbols-outlined item-check-icon">{nameSortField === 'first' ? 'check' : ''}</span>
+                                  <span>First name</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  class="sort-menu-item"
+                                  class:is-active={nameSortField === 'last'}
+                                  onclick={() => { setSortField('last'); showSortMenu = false; }}
+                                  role="menuitemradio"
+                                  aria-checked={nameSortField === 'last'}
+                                >
+                                  <span class="material-symbols-outlined item-check-icon">{nameSortField === 'last' ? 'check' : ''}</span>
+                                  <span>Last name</span>
+                                </button>
+
+                                <div class="menu-divider"></div>
+                                <div class="sort-menu-heading">Order</div>
+                                <button
+                                  type="button"
+                                  class="sort-menu-item"
+                                  class:is-active={nameSortDirection === 'asc'}
+                                  onclick={() => { setSortDirection('asc'); showSortMenu = false; }}
+                                  role="menuitemradio"
+                                  aria-checked={nameSortDirection === 'asc'}
+                                >
+                                  <span class="material-symbols-outlined item-check-icon">{nameSortDirection === 'asc' ? 'check' : ''}</span>
+                                  <span>A &rarr; Z (Ascending)</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  class="sort-menu-item"
+                                  class:is-active={nameSortDirection === 'desc'}
+                                  onclick={() => { setSortDirection('desc'); showSortMenu = false; }}
+                                  role="menuitemradio"
+                                  aria-checked={nameSortDirection === 'desc'}
+                                >
+                                  <span class="material-symbols-outlined item-check-icon">{nameSortDirection === 'desc' ? 'check' : ''}</span>
+                                  <span>Z &rarr; A (Reverse)</span>
+                                </button>
+                              </div>
+                            {/if}
+                          </div>
+                        {:else}
+                          <span>{colDef ? colDef.label : colKey}</span>
+                        {/if}
+
                         <div
                           class="col-resizer"
                           class:resizing={resizingCol === colKey}
                           onmousedown={(e) => onResizeStart(colKey, e)}
                           role="presentation"
                           aria-hidden="true"
-                          title="Drag to resize"
+                          data-tooltip="Drag to resize"
                         ></div>
                       </div>
                     </th>
@@ -1938,9 +3244,6 @@
                         {#if colKey === 'name'}
                           <td>
                             <div class="name-cell-content">
-                              <span class="star-indicator" title="Starred contact">
-                                <span class="material-symbols-outlined icon-filled" style="color: var(--favorite); font-size: 18px;">star</span>
-                              </span>
                               <div class="avatar-circle" style="background-color: {getAvatarColor(getDisplayName(contact))}; color: #ffffff;">
                                 {#if getAvatarSource(contact)}
                                   <img
@@ -1958,6 +3261,11 @@
                               <span class="name-text">{getDisplayName(contact)}</span>
                             </div>
                           </td>
+                        {:else if colKey === 'job'}
+                          {@const jobInfo = getOrganization(contact.payload)}
+                          <td title={[jobInfo.title, jobInfo.org].filter(Boolean).join(' • ')}>
+                            {[jobInfo.title, jobInfo.org].filter(Boolean).join(' • ') || '-'}
+                          </td>
                         {:else if colKey === 'email'}
                           <td>{getPrimaryEmail(contact.payload)}</td>
                         {:else if colKey === 'phone'}
@@ -1965,10 +3273,23 @@
                         {:else if colKey === 'birthday'}
                           <td>{getBirthday(contact.payload)}</td>
                         {:else if colKey === 'labels'}
-                          <td>
+                          <td class="labels-cell">
                             <div class="labels-container">
-                              {#each getContactLabels(contact.payload) as lbl}
-                                <span class="label-chip">{lbl}</span>
+                              {#each getContactLabelItems(contact.payload) as lbl (lbl.resourceName)}
+                                <button
+                                  type="button"
+                                  class="label-chip"
+                                  class:active={selectedGroup === lbl.resourceName}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    selectLabelFilter(selectedGroup === lbl.resourceName ? null : lbl.resourceName);
+                                    navigate('contacts');
+                                  }}
+                                  title="Filter contacts by label: {lbl.name}"
+                                  aria-label="Filter contacts by label: {lbl.name}"
+                                >
+                                  {lbl.name}
+                                </button>
                               {/each}
                             </div>
                           </td>
@@ -2015,6 +3336,11 @@
                               <span class="name-text">{getDisplayName(contact)}</span>
                             </div>
                           </td>
+                        {:else if colKey === 'job'}
+                          {@const jobInfo = getOrganization(contact.payload)}
+                          <td title={[jobInfo.title, jobInfo.org].filter(Boolean).join(' • ')}>
+                            {[jobInfo.title, jobInfo.org].filter(Boolean).join(' • ') || '-'}
+                          </td>
                         {:else if colKey === 'email'}
                           <td>{getPrimaryEmail(contact.payload)}</td>
                         {:else if colKey === 'phone'}
@@ -2022,10 +3348,23 @@
                         {:else if colKey === 'birthday'}
                           <td>{getBirthday(contact.payload)}</td>
                         {:else if colKey === 'labels'}
-                          <td>
+                          <td class="labels-cell">
                             <div class="labels-container">
-                              {#each getContactLabels(contact.payload) as lbl}
-                                <span class="label-chip">{lbl}</span>
+                              {#each getContactLabelItems(contact.payload) as lbl (lbl.resourceName)}
+                                <button
+                                  type="button"
+                                  class="label-chip"
+                                  class:active={selectedGroup === lbl.resourceName}
+                                  onclick={(e) => {
+                                    e.stopPropagation();
+                                    selectLabelFilter(selectedGroup === lbl.resourceName ? null : lbl.resourceName);
+                                    navigate('contacts');
+                                  }}
+                                  title="Filter contacts by label: {lbl.name}"
+                                  aria-label="Filter contacts by label: {lbl.name}"
+                                >
+                                  {lbl.name}
+                                </button>
                               {/each}
                             </div>
                           </td>
@@ -2070,153 +3409,514 @@
           </div>
         {/if}
       {:else if pageView === 'changes'}
-        <!-- Changes & Snapshot Comparison View -->
-        <div class="view-header">
+        <!-- Changes & Changelog View -->
+        <div class="view-header" style="border-bottom: none; padding-bottom: 4px;">
           <h1 class="view-title">
-            {#if compareBaseSeq && compareTargetSeq && compareBaseSeq !== compareTargetSeq}
-              Snapshot Comparison: #{compareBaseSeq} → #{compareTargetSeq}
+            {#if changesTab === 'comparison'}
+              {#if compareBaseSeq && compareTargetSeq && compareBaseSeq !== compareTargetSeq}
+                Snapshot Comparison: #{compareBaseSeq} → #{compareTargetSeq}
+              {:else}
+                Changes in Snapshot #{capture?.sequence}
+              {/if}
             {:else}
-              Changes in Snapshot #{capture?.sequence}
+              Entire Changelog
             {/if}
           </h1>
+
+          <!-- Segmented Tab Navigation -->
+          <div class="segmented-nav-group" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={changesTab === 'comparison'}
+              class="segmented-nav-btn"
+              class:active={changesTab === 'comparison'}
+              onclick={() => (changesTab = 'comparison')}
+            >
+              <span class="material-symbols-outlined">compare_arrows</span>
+              <span>Snapshot Comparison</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={changesTab === 'changelog'}
+              class="segmented-nav-btn"
+              class:active={changesTab === 'changelog'}
+              onclick={() => {
+                changesTab = 'changelog';
+                if (changelogList.length === 0) refreshAllChanges();
+              }}
+            >
+              <span class="material-symbols-outlined">history</span>
+              <span>Entire Changelog</span>
+              {#if changelogList.length > 0}
+                <span class="filter-pill-count">{changelogList.length}</span>
+              {/if}
+            </button>
+          </div>
         </div>
 
         <div class="changes-container">
-          {#if captures.length > 1}
-            <div class="comparison-bar">
-              <div class="compare-group">
-                <span class="compare-label">Base Snapshot:</span>
-                <select
-                  class="compare-select"
-                  bind:value={compareBaseSeq}
-                  onchange={refreshChangesComparison}
-                >
-                  {#each captures as cap}
-                    <option value={cap.sequence}>
-                      Snapshot #{cap.sequence} ({formatCaptureTime(cap.committed_at)})
-                    </option>
-                  {/each}
-                </select>
-              </div>
-
-              <span class="material-symbols-outlined compare-arrow">arrow_forward</span>
-
-              <div class="compare-group">
-                <span class="compare-label">Compare With:</span>
-                <select
-                  class="compare-select"
-                  bind:value={compareTargetSeq}
-                  onchange={refreshChangesComparison}
-                >
-                  {#each captures as cap}
-                    <option value={cap.sequence}>
-                      Snapshot #{cap.sequence} ({formatCaptureTime(cap.committed_at)})
-                    </option>
-                  {/each}
-                </select>
-              </div>
-
-              <div style="display: flex; gap: 8px; margin-left: auto;">
-                <button
-                  class="compare-quick-btn"
-                  onclick={() => {
-                    if (capture) {
-                      const curSeq = capture.sequence;
-                      compareTargetSeq = curSeq;
-                      const prior = captures.find((c) => c.sequence < curSeq);
-                      compareBaseSeq = prior ? prior.sequence : 1;
-                      refreshChangesComparison();
-                    }
-                  }}
-                >
-                  Compare with previous
-                </button>
-                <button
-                  class="compare-quick-btn"
-                  onclick={() => {
-                    if (captures.length >= 2) {
-                      compareBaseSeq = captures[captures.length - 1].sequence;
-                      compareTargetSeq = captures[0].sequence;
-                      refreshChangesComparison();
-                    }
-                  }}
-                >
-                  Earliest vs Latest
-                </button>
-              </div>
-            </div>
-          {/if}
-
-          {#each changes as change}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div
-              class="change-card"
-              class:selected={chosenChange === change}
-              onclick={() => chosenChange = chosenChange === change ? undefined : change}
-            >
-              <div class="change-header">
-                <div>
-                  <span class="change-tag {change.kind}">{change.kind}</span>
-                  <div style="font-weight: 500; font-size: 15px; margin-top: 2px;">
-                    {change.after ? getDisplayName({ resource_name: change.resource_name, display_name: '', payload: change.after, version: change.version }) : (change.before ? getDisplayName({ resource_name: change.resource_name, display_name: '', payload: change.before, version: change.version }) : change.resource_name)}
-                  </div>
-                  <div style="font-size: 12px; color: var(--google-text-secondary); margin-top: 2px;">
-                    Revision #{change.version} · Resource: <code>{change.resource_name}</code>
-                  </div>
+          {#if changesTab === 'comparison'}
+            <!-- TAB 1: SNAPSHOT COMPARISON -->
+            {#if captures.length > 1}
+              <div class="comparison-bar">
+                <div class="compare-group">
+                  <span class="compare-label">Base Snapshot:</span>
+                  <select
+                    class="compare-select"
+                    bind:value={compareBaseSeq}
+                    onchange={refreshChangesComparison}
+                  >
+                    {#each captures as cap}
+                      <option value={cap.sequence}>
+                        Snapshot #{cap.sequence} ({formatCaptureTime(cap.committed_at)})
+                      </option>
+                    {/each}
+                  </select>
                 </div>
-                <button class="icon-btn" title="Inspect diff" onclick={(e) => { e.stopPropagation(); chosenChange = chosenChange === change ? undefined : change; }}>
-                  <span class="material-symbols-outlined">{chosenChange === change ? 'expand_less' : 'expand_more'}</span>
+
+                <button
+                  type="button"
+                  class="compare-swap-btn"
+                  title="Swap base and target snapshots"
+                  aria-label="Swap snapshots"
+                  onclick={swapComparisonSnapshots}
+                >
+                  <span class="material-symbols-outlined">swap_horiz</span>
                 </button>
-              </div>
 
-              {#if chosenChange === change}
-                <div class="diff-details-panel">
-                  <div class="diff-grid">
-                    <div>
-                      <div class="diff-column-header">
-                        Base Snapshot ({change.before ? 'Previous Data' : 'Not Present'})
-                      </div>
-                      <pre class="diff-pre">{change.before ? JSON.stringify(change.before, null, 2) : '(none)'}</pre>
-                    </div>
-                    <div>
-                      <div class="diff-column-header">
-                        Target Snapshot ({change.after ? 'Updated Data' : 'Removed'})
-                      </div>
-                      <pre class="diff-pre">{change.after ? JSON.stringify(change.after, null, 2) : '(deleted)'}</pre>
-                    </div>
-                  </div>
+                <div class="compare-group">
+                  <span class="compare-label">Compare With:</span>
+                  <select
+                    class="compare-select"
+                    bind:value={compareTargetSeq}
+                    onchange={refreshChangesComparison}
+                  >
+                    {#each captures as cap}
+                      <option value={cap.sequence}>
+                        Snapshot #{cap.sequence} ({formatCaptureTime(cap.committed_at)})
+                      </option>
+                    {/each}
+                  </select>
                 </div>
-              {/if}
-            </div>
-          {/each}
 
-          {#if changes.length === 0}
-            <div class="empty-state">
-              <span class="material-symbols-outlined">history</span>
-              <h3 class="empty-state-title">No changes recorded</h3>
-              <p class="empty-state-desc">
-                {#if compareBaseSeq && compareTargetSeq && compareBaseSeq === compareTargetSeq}
-                  Base snapshot and Target snapshot are identical. Select two different snapshots to compare.
-                {:else}
-                  No contacts were added, modified, or removed between these snapshots.
+                <div style="display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap;">
+                  <button
+                    type="button"
+                    class="compare-quick-btn"
+                    onclick={() => {
+                      if (capture) {
+                        const curSeq = capture.sequence;
+                        compareTargetSeq = curSeq;
+                        const prior = captures.find((c) => c.sequence < curSeq);
+                        compareBaseSeq = prior ? prior.sequence : 1;
+                        refreshChangesComparison();
+                      }
+                    }}
+                  >
+                    Compare with previous
+                  </button>
+                  <button
+                    type="button"
+                    class="compare-quick-btn"
+                    onclick={() => {
+                      if (captures.length >= 2) {
+                        compareBaseSeq = captures[captures.length - 1].sequence;
+                        compareTargetSeq = captures[0].sequence;
+                        refreshChangesComparison();
+                      }
+                    }}
+                  >
+                    Earliest vs Latest
+                  </button>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Summary Metrics & Filter Toolbar -->
+            {#if changes.length > 0}
+              <div class="changes-stats-row">
+                <div class="stat-chip">
+                  <strong>{comparisonStats.total}</strong>
+                  <span class="label">Total {comparisonStats.total === 1 ? 'Change' : 'Changes'}</span>
+                </div>
+                {#if comparisonStats.added > 0}
+                  <div class="stat-chip added">
+                    <span class="material-symbols-outlined icon-micro">add_circle</span>
+                    <strong>+{comparisonStats.added}</strong>
+                    <span class="label">Added</span>
+                  </div>
                 {/if}
-              </p>
+                {#if comparisonStats.changed > 0}
+                  <div class="stat-chip changed">
+                    <span class="material-symbols-outlined icon-micro">edit</span>
+                    <strong>~{comparisonStats.changed}</strong>
+                    <span class="label">Modified</span>
+                  </div>
+                {/if}
+                {#if comparisonStats.removed > 0}
+                  <div class="stat-chip removed">
+                    <span class="material-symbols-outlined icon-micro">remove_circle</span>
+                    <strong>-{comparisonStats.removed}</strong>
+                    <span class="label">Removed</span>
+                  </div>
+                {/if}
+              </div>
+
+              <div class="changes-filter-toolbar">
+                <div class="changes-search-box">
+                  <span class="material-symbols-outlined">search</span>
+                  <input
+                    type="text"
+                    class="changes-search-input"
+                    placeholder="Filter comparison changes..."
+                    bind:value={comparisonSearch}
+                  />
+                  {#if comparisonSearch}
+                    <button
+                      type="button"
+                      class="icon-btn"
+                      style="width: 24px; height: 24px;"
+                      onclick={() => (comparisonSearch = '')}
+                    >
+                      <span class="material-symbols-outlined" style="font-size: 16px;">close</span>
+                    </button>
+                  {/if}
+                </div>
+
+                <div class="filter-pills-row">
+                  <button
+                    type="button"
+                    class="filter-pill"
+                    class:active={comparisonKindFilter === 'all'}
+                    onclick={() => (comparisonKindFilter = 'all')}
+                  >
+                    All <span class="filter-pill-count">{changes.length}</span>
+                  </button>
+                  {#if comparisonStats.added > 0}
+                    <button
+                      type="button"
+                      class="filter-pill"
+                      class:active={comparisonKindFilter === 'added'}
+                      onclick={() => (comparisonKindFilter = 'added')}
+                    >
+                      Added <span class="filter-pill-count">{comparisonStats.added}</span>
+                    </button>
+                  {/if}
+                  {#if comparisonStats.changed > 0}
+                    <button
+                      type="button"
+                      class="filter-pill"
+                      class:active={comparisonKindFilter === 'changed'}
+                      onclick={() => (comparisonKindFilter = 'changed')}
+                    >
+                      Modified <span class="filter-pill-count">{comparisonStats.changed}</span>
+                    </button>
+                  {/if}
+                  {#if comparisonStats.removed > 0}
+                    <button
+                      type="button"
+                      class="filter-pill"
+                      class:active={comparisonKindFilter === 'removed'}
+                      onclick={() => (comparisonKindFilter = 'removed')}
+                    >
+                      Removed <span class="filter-pill-count">{comparisonStats.removed}</span>
+                    </button>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+
+            <!-- Changes Card List -->
+            {#each filteredComparisonChanges as change (change.resource_name + '-' + change.version)}
+              <ContactChangeCard
+                {change}
+                labels={groupMap}
+                avatarUrl={getAvatarSource({ resource_name: change.resource_name, display_name: '', payload: change.after || change.before || {}, version: change.version }, media)}
+              />
+            {/each}
+
+            {#if changes.length === 0}
+              <div class="empty-state">
+                <span class="material-symbols-outlined" style="font-size: 48px; color: var(--google-text-secondary); margin-bottom: 12px;">history_toggle_off</span>
+                <h3 class="empty-state-title">No changes recorded</h3>
+                <p class="empty-state-desc">
+                  {#if compareBaseSeq && compareTargetSeq && compareBaseSeq === compareTargetSeq}
+                    Base snapshot and Target snapshot are identical. Select two different snapshots above to compare them.
+                  {:else}
+                    No contacts were added, modified, or removed between Snapshot #{compareBaseSeq} and Snapshot #{compareTargetSeq}.
+                  {/if}
+                </p>
+              </div>
+            {:else if filteredComparisonChanges.length === 0}
+              <div class="empty-state" style="padding: 40px 20px;">
+                <span class="material-symbols-outlined" style="font-size: 36px; color: var(--google-text-secondary); margin-bottom: 8px;">filter_list_off</span>
+                <h3 class="empty-state-title">No matching changes</h3>
+                <p class="empty-state-desc">No changes match your current search and type filters.</p>
+                <button
+                  type="button"
+                  class="compare-quick-btn"
+                  style="margin-top: 12px;"
+                  onclick={() => { comparisonSearch = ''; comparisonKindFilter = 'all'; }}
+                >
+                  Reset filters
+                </button>
+              </div>
+            {/if}
+          {:else}
+            <!-- TAB 2: ENTIRE CHANGELOG -->
+            <!-- Full Lifetime Archive Stats -->
+            <div class="changelog-overview-grid">
+              <div class="changelog-metric-card">
+                <span class="num">{changelogStats.totalSnapshots}</span>
+                <span class="title">Total Snapshots</span>
+              </div>
+              <div class="changelog-metric-card">
+                <span class="num" style="color: var(--google-blue);">{changelogStats.totalEvents}</span>
+                <span class="title">Revisions Recorded</span>
+              </div>
+              <div class="changelog-metric-card">
+                <span class="num" style="color: var(--success-text);">+{changelogStats.added}</span>
+                <span class="title">Total Contacts Added</span>
+              </div>
+              <div class="changelog-metric-card">
+                <span class="num" style="color: var(--google-blue);">~{changelogStats.changed}</span>
+                <span class="title">Modifications</span>
+              </div>
+              <div class="changelog-metric-card">
+                <span class="num" style="color: var(--google-danger);">-{changelogStats.removed}</span>
+                <span class="title">Total Contacts Removed</span>
+              </div>
             </div>
+
+            <!-- Search & Filter for Changelog -->
+            <div class="changes-filter-toolbar">
+              <div class="changes-search-box">
+                <span class="material-symbols-outlined">search</span>
+                <input
+                  type="text"
+                  class="changes-search-input"
+                  placeholder="Search entire changelog by name or field..."
+                  bind:value={changelogSearch}
+                />
+                {#if changelogSearch}
+                  <button
+                    type="button"
+                    class="icon-btn"
+                    style="width: 24px; height: 24px;"
+                    onclick={() => (changelogSearch = '')}
+                  >
+                    <span class="material-symbols-outlined" style="font-size: 16px;">close</span>
+                  </button>
+                {/if}
+              </div>
+
+              <div class="filter-pills-row">
+                <button
+                  type="button"
+                  class="filter-pill"
+                  class:active={changelogKindFilter === 'all'}
+                  onclick={() => (changelogKindFilter = 'all')}
+                >
+                  All <span class="filter-pill-count">{changelogList.length}</span>
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill"
+                  class:active={changelogKindFilter === 'added'}
+                  onclick={() => (changelogKindFilter = 'added')}
+                >
+                  Added <span class="filter-pill-count">{changelogStats.added}</span>
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill"
+                  class:active={changelogKindFilter === 'changed'}
+                  onclick={() => (changelogKindFilter = 'changed')}
+                >
+                  Modified <span class="filter-pill-count">{changelogStats.changed}</span>
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill"
+                  class:active={changelogKindFilter === 'removed'}
+                  onclick={() => (changelogKindFilter = 'removed')}
+                >
+                  Removed <span class="filter-pill-count">{changelogStats.removed}</span>
+                </button>
+              </div>
+            </div>
+
+            {#if loadingChangelog}
+              <div class="empty-state" style="padding: 60px 20px;">
+                <span class="material-symbols-outlined spin" style="font-size: 36px; color: var(--google-blue); margin-bottom: 12px;">sync</span>
+                <h3 class="empty-state-title">Loading entire changelog...</h3>
+              </div>
+            {:else if changelogSnapshotGroups.length > 0}
+              <!-- Chronological Snapshot Timeline Feed -->
+              <div class="timeline-feed">
+                {#each changelogSnapshotGroups as group (group.sequence)}
+                  {@const isCollapsed = collapsedSnapshots.has(group.sequence)}
+                  <div class="timeline-snapshot-block">
+                    <div class="timeline-node-pin"></div>
+                    <div class="timeline-snapshot-header">
+                      <div class="timeline-header-left">
+                        <span class="timeline-snap-title">Snapshot #{group.sequence}</span>
+                        <span class="timeline-snap-time">{formatCaptureTime(group.committed_at)}</span>
+                        <span class="timeline-snap-count">
+                          {group.changes.length} {group.changes.length === 1 ? 'change' : 'changes'}
+                        </span>
+                      </div>
+
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <button
+                          type="button"
+                          class="timeline-compare-btn"
+                          onclick={() => compareSnapshotWithPrior(group.sequence)}
+                          title="Open snapshot comparison for this snapshot"
+                        >
+                          <span class="material-symbols-outlined" style="font-size: 16px;">compare_arrows</span>
+                          <span>Compare this snapshot</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="icon-btn"
+                          style="width: 32px; height: 32px;"
+                          title={isCollapsed ? 'Expand snapshot changes' : 'Collapse snapshot changes'}
+                          onclick={() => toggleSnapshotCollapse(group.sequence)}
+                        >
+                          <span class="material-symbols-outlined" style="font-size: 20px;">
+                            {isCollapsed ? 'expand_more' : 'expand_less'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {#if !isCollapsed}
+                      <div class="timeline-changes-wrap">
+                        {#each group.changes as item (item.resource_name + '-' + item.version)}
+                          <ContactChangeCard
+                            change={{
+                              resource_name: item.resource_name,
+                              kind: item.kind,
+                              version: item.version,
+                              before: item.before,
+                              after: item.after,
+                            }}
+                            labels={groupMap}
+                            avatarUrl={getAvatarSource({ resource_name: item.resource_name, display_name: '', payload: item.after || item.before || {}, version: item.version }, media)}
+                            showSnapshotBadge={false}
+                            committedAt={item.committed_at}
+                          />
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="empty-state">
+                <span class="material-symbols-outlined" style="font-size: 48px; color: var(--google-text-secondary); margin-bottom: 12px;">history</span>
+                <h3 class="empty-state-title">No changelog entries found</h3>
+                <p class="empty-state-desc">
+                  {#if changelogSearch || changelogKindFilter !== 'all'}
+                    No records match your filters. Try clearing search or selecting "All".
+                  {:else}
+                    No contact revisions have been recorded in this archive yet.
+                  {/if}
+                </p>
+              </div>
+            {/if}
           {/if}
         </div>
-      {:else if pageView === 'onboarding'}
-        <!-- Onboarding / Google Connect View -->
-        <div class="empty-state" style="padding-top: 80px;">
-          <div class="brand-icon-circle" style="width: 56px; height: 56px; margin-bottom: 20px;">
-            <span class="material-symbols-outlined icon-filled" style="font-size: 32px;">person</span>
+      {/if}
+    </main>
+  {:else}
+    <!-- Simple Onboarding Screen -->
+    <div class="onboarding-screen">
+      <div class="onboarding-card">
+        {#if selected && captures.length === 0}
+          <!-- Case 1: Account connected, but no snapshots captured yet -->
+          <div class="onboarding-avatar-circle">
+            {#if accountProfile?.picture}
+              <img
+                src={accountProfile.picture}
+                alt={accountProfile?.name || selected.email}
+                class="onboarding-avatar-img"
+                referrerpolicy="no-referrer"
+                onerror={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+              />
+            {:else}
+              <span class="material-symbols-outlined icon-filled" style="font-size: 32px; color: var(--google-blue);">person</span>
+            {/if}
           </div>
-          <h2 style="font-size: 24px; font-weight: 400; margin-bottom: 8px;">Connect your Google Account</h2>
-          <p class="empty-state-desc" style="margin-bottom: 28px;">
-            Provide your Google Cloud OAuth Client credentials to begin archiving your contact history.
+
+          <div class="onboarding-account-badge">
+            <span class="material-symbols-outlined" style="font-size: 16px; color: var(--success-text);">check_circle</span>
+            <span>{accountProfile?.name ? `${accountProfile.name} (${selected.email})` : selected.email}</span>
+          </div>
+
+          <h1 class="onboarding-title">Capture your first snapshot</h1>
+          <p class="onboarding-desc">
+            Your Google account is connected. Capture your first snapshot to begin archiving your contact history and tracking revisions over time.
           </p>
 
-          <div style="width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 16px; text-align: left;">
+          <div class="onboarding-form">
+            {#if error}
+              <div class="banner banner-error" style="margin-bottom: 4px; font-size: 13px;">
+                <span class="material-symbols-outlined" style="font-size: 18px;">error</span>
+                <span>{error}</span>
+              </div>
+            {/if}
+
+            <button
+              class="btn-primary"
+              onclick={captureNow}
+              disabled={busy}
+              style="height: 48px; font-size: 15px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px;"
+            >
+              <span class="material-symbols-outlined" class:spin={busy} style="font-size: 20px;">
+                {busy ? 'sync' : 'photo_camera'}
+              </span>
+              <span>{busy ? 'Capturing snapshot...' : 'Capture contacts now'}</span>
+            </button>
+
+            <div class="onboarding-divider">or import existing data</div>
+
+            <div class="onboarding-secondary-actions">
+              <button class="btn-secondary" onclick={importCsv} disabled={busy} style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <span class="material-symbols-outlined" style="font-size: 18px;">upload</span>
+                <span>Import from CSV</span>
+              </button>
+              <button class="btn-secondary" onclick={restoreLocal} disabled={busy} style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <span class="material-symbols-outlined" style="font-size: 18px;">unarchive</span>
+                <span>Restore database backup</span>
+              </button>
+              <button
+                class="btn-secondary"
+                onclick={disconnectSelected}
+                disabled={busy}
+                style="height: 40px; color: var(--google-danger); border-color: transparent; display: flex; align-items: center; justify-content: center; gap: 8px;"
+              >
+                <span class="material-symbols-outlined" style="font-size: 18px;">logout</span>
+                <span>Disconnect account</span>
+              </button>
+            </div>
+          </div>
+
+        {:else}
+          <!-- Case 2: No account connected (or explicitly adding another account) -->
+          <div class="onboarding-icon-circle">
+            <span class="material-symbols-outlined icon-filled" style="font-size: 32px;">contacts</span>
+          </div>
+
+          <h1 class="onboarding-title">Welcome to Contact History</h1>
+          <p class="onboarding-desc">
+            Connect your Google Account using your OAuth Client credentials to begin archiving contacts and tracking revisions over time.
+          </p>
+
+          <div class="onboarding-form">
             <div>
               <label for="client-id" style="font-size: 12px; font-weight: 500; color: var(--google-text-secondary); display: block; margin-bottom: 6px;">Client ID</label>
               <input
@@ -2238,161 +3938,213 @@
               />
             </div>
             {#if error}
-              <div style="color: var(--google-danger); font-size: 13px;">{error}</div>
+              <div class="banner banner-error" style="margin-top: 4px; font-size: 13px;">
+                <span class="material-symbols-outlined" style="font-size: 18px;">error</span>
+                <span>{error}</span>
+              </div>
             {/if}
-            <button class="btn-primary" onclick={connectNewAccount} disabled={busy || !clientId || !clientSecret} style="height: 44px; margin-top: 8px;">
-              {busy ? 'Connecting...' : 'Connect Google'}
+            <button
+              class="btn-primary"
+              onclick={connectNewAccount}
+              disabled={busy || !clientId.trim() || !clientSecret.trim()}
+              style="height: 48px; font-size: 15px; font-weight: 500; margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 8px;"
+            >
+              <span class="material-symbols-outlined" class:spin={busy} style="font-size: 20px;">
+                {busy ? 'sync' : 'login'}
+              </span>
+              <span>{busy ? 'Connecting to Google...' : 'Connect Google'}</span>
             </button>
-          </div>
-        </div>
-      {/if}
-    </main>
-  </div>
 
-  <!-- Column Customizer Modal -->
+            <div class="onboarding-divider">or restore an archive</div>
+
+            <div class="onboarding-secondary-actions">
+              <button class="btn-secondary" onclick={restoreLocal} disabled={busy} style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <span class="material-symbols-outlined" style="font-size: 18px;">unarchive</span>
+                <span>Restore from backup archive</span>
+              </button>
+              {#if hasData}
+                <button class="btn-secondary" onclick={() => navigate('contacts')} style="height: 40px; margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                  <span class="material-symbols-outlined" style="font-size: 18px;">arrow_back</span>
+                  <span>Back to contacts</span>
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+</div>
+
+  <!-- Column Customizer Modal (Google Contacts Style) -->
   {#if showColCustomizer}
     <div
       class="modal-overlay"
-      onclick={(e) => { if (e.target === e.currentTarget) showColCustomizer = false; }}
-      onkeydown={(e) => { if (e.key === 'Escape') showColCustomizer = false; }}
+      onclick={(e) => {
+        if (e.target === e.currentTarget) {
+          showColCustomizer = false;
+          openColDropdownSlot = null;
+        }
+      }}
+      onkeydown={(e) => {
+        if (e.key === 'Escape') {
+          if (openColDropdownSlot !== null) {
+            openColDropdownSlot = null;
+          } else {
+            showColCustomizer = false;
+          }
+        }
+      }}
       role="dialog"
       aria-modal="true"
       use:focusDialog
       tabindex="-1"
     >
-      <div class="modal-dialog" role="document">
-        <div class="modal-header">
-          <h2 class="modal-title">Customize Columns</h2>
-          <button class="icon-btn" onclick={() => showColCustomizer = false}>
-            <span class="material-symbols-outlined">close</span>
-          </button>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="modal-dialog col-order-dialog"
+        role="document"
+        onclick={(e) => {
+          const target = e.target as HTMLElement;
+          if (!target.closest('.col-order-select-container')) {
+            openColDropdownSlot = null;
+          }
+        }}
+      >
+        <div class="col-order-header">
+          <h2 class="col-order-title">Change column order</h2>
         </div>
-        <div class="modal-body">
-          <p style="font-size: 13px; color: var(--google-text-secondary); margin-bottom: 16px;">
-            Choose which columns are displayed in the contacts table and reorder them using the arrow buttons.
+        <div class="col-order-body">
+          <p class="col-order-subtitle">
+            Choose columns to show and drag to change the order. Small screens may not display all columns.
           </p>
 
-          <div class="customizer-section-title">Displayed columns ({activeColKeys.length})</div>
-          <div class="col-options-list">
-            {#each activeColKeys as colKey, index}
-              {@const colDef = ALL_COLUMNS.find((c) => c.key === colKey)!}
-              <div class="col-option-row">
-                <div class="col-option-left">
-                  <label class="checkbox-label" style="margin: 0;">
-                    <input
-                      type="checkbox"
-                      checked={true}
-                      disabled={colKey === 'name'}
-                      onchange={() => toggleColumn(colKey)}
-                    />
-                    <span style="font-weight: {colKey === 'name' ? '600' : '400'};">{colDef.label}</span>
-                  </label>
-                  {#if colKey === 'name'}
-                    <span style="font-size: 11px; color: var(--google-text-secondary); background: var(--google-blue-surface); color: var(--google-blue); padding: 2px 6px; border-radius: 4px;">Primary</span>
+          <div class="col-order-list" role="list">
+            <!-- 1. Fixed Name row -->
+            <div class="col-order-row col-order-fixed-row" role="listitem">
+              <span class="col-order-num">1.</span>
+              <span class="col-order-fixed-name">Name</span>
+            </div>
+
+            <!-- Draggable slots 2 to N -->
+            {#each activeColKeys.slice(1) as colKey, idx}
+              {@const slotIndex = idx + 1}
+              {@const isDropdownOpen = openColDropdownSlot === slotIndex}
+              <div
+                class="col-order-row col-order-slot-row"
+                class:is-dragging={pointerDragSlot === slotIndex}
+                class:is-drag-over={pointerOverSlot === slotIndex && pointerDragSlot !== slotIndex}
+                data-slot-index={slotIndex}
+                role="listitem"
+              >
+                <span class="col-order-num">{slotIndex + 1}.</span>
+
+                <div class="col-order-select-container">
+                  <button
+                    type="button"
+                    class="col-order-select-btn"
+                    class:is-open={isDropdownOpen}
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      openColDropdownSlot = isDropdownOpen ? null : slotIndex;
+                    }}
+                    aria-haspopup="listbox"
+                    aria-expanded={isDropdownOpen}
+                  >
+                    <span class="col-order-select-label">{getColumnLabel(colKey)}</span>
+                    <span class="material-symbols-outlined col-order-arrow">
+                      {isDropdownOpen ? 'arrow_drop_up' : 'arrow_drop_down'}
+                    </span>
+                  </button>
+
+                  {#if isDropdownOpen}
+                    <div class="col-order-dropdown" role="listbox">
+                      {#each AVAILABLE_SELECT_COLUMNS as opt}
+                        <button
+                          type="button"
+                          class="col-order-option"
+                          class:is-selected={opt.key === colKey}
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            selectColumnForSlot(slotIndex, opt.key);
+                          }}
+                          role="option"
+                          aria-selected={opt.key === colKey}
+                        >
+                          <span>{opt.label}</span>
+                          {#if opt.key === colKey}
+                            <span class="material-symbols-outlined col-opt-check">check</span>
+                          {/if}
+                        </button>
+                      {/each}
+                    </div>
                   {/if}
                 </div>
-                <div class="col-actions">
-                  <span style="font-size: 12px; color: var(--google-text-secondary); margin-right: 8px;">
-                    {colWidths[colKey]}px
-                  </span>
-                  <button
-                    class="col-order-btn"
-                    title="Move up"
-                    disabled={index <= 1}
-                    onclick={() => moveColumn(colKey, -1)}
+
+                <div class="col-reorder-actions">
+                  <div class="col-micro-arrows">
+                    <button
+                      type="button"
+                      class="col-micro-btn"
+                      disabled={slotIndex <= 1}
+                      onclick={(e) => { e.stopPropagation(); moveColumnSlot(slotIndex, -1); }}
+                      data-tooltip="Move up"
+                      aria-label="Move up"
+                    >
+                      <span class="material-symbols-outlined">expand_less</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="col-micro-btn"
+                      disabled={slotIndex >= activeColKeys.length - 1}
+                      onclick={(e) => { e.stopPropagation(); moveColumnSlot(slotIndex, 1); }}
+                      data-tooltip="Move down"
+                      aria-label="Move down"
+                    >
+                      <span class="material-symbols-outlined">expand_more</span>
+                    </button>
+                  </div>
+
+                  <!-- svelte-ignore a11y_interactive_supports_focus -->
+                  <div
+                    class="col-drag-handle-btn"
+                    onpointerdown={(e) => startPointerDrag(slotIndex, e)}
+                    data-tooltip="Drag to reorder"
+                    aria-label="Drag to reorder"
+                    role="button"
+                    tabindex="0"
+                    onkeydown={(e) => {
+                      if (e.key === 'ArrowUp') { e.preventDefault(); moveColumnSlot(slotIndex, -1); }
+                      if (e.key === 'ArrowDown') { e.preventDefault(); moveColumnSlot(slotIndex, 1); }
+                    }}
                   >
-                    <span class="material-symbols-outlined">arrow_upward</span>
-                  </button>
-                  <button
-                    class="col-order-btn"
-                    title="Move down"
-                    disabled={index === 0 || index >= activeColKeys.length - 1}
-                    onclick={() => moveColumn(colKey, 1)}
-                  >
-                    <span class="material-symbols-outlined">arrow_downward</span>
-                  </button>
+                    <svg width="18" height="12" viewBox="0 0 18 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <line x1="0" y1="2" x2="18" y2="2" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                      <line x1="0" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                    </svg>
+                  </div>
                 </div>
               </div>
             {/each}
           </div>
-
-          {#if hiddenCols.length > 0}
-            <div class="customizer-section-title">Hidden columns ({hiddenCols.length})</div>
-            <div class="col-options-list">
-              {#each hiddenCols as col}
-                <div class="col-option-row" onclick={() => toggleColumn(col.key)} role="presentation">
-                  <div class="col-option-left">
-                    <label class="checkbox-label" style="margin: 0;">
-                      <input
-                        type="checkbox"
-                        checked={false}
-                        onchange={() => toggleColumn(col.key)}
-                      />
-                      <span>{col.label}</span>
-                    </label>
-                  </div>
-                  <div class="col-actions">
-                    <span style="font-size: 12px; color: var(--google-text-secondary); margin-right: 8px;">
-                      {colWidths[col.key]}px
-                    </span>
-                    <button class="col-order-btn" title="Add column" onclick={(e) => { e.stopPropagation(); toggleColumn(col.key); }}>
-                      <span class="material-symbols-outlined">add</span>
-                    </button>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
         </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" onclick={resetColumns}>Reset to default</button>
-          <button class="btn-primary" onclick={() => showColCustomizer = false}>Done</button>
-        </div>
-      </div>
-    </div>
-  {/if}
 
-  <!-- Snapshot Picker Modal / Dropdown -->
-  {#if showSnapshotDropdown}
-    <div
-      class="modal-overlay"
-      onclick={(e) => { if (e.target === e.currentTarget) showSnapshotDropdown = false; }}
-      onkeydown={(e) => { if (e.key === 'Escape') showSnapshotDropdown = false; }}
-      role="dialog"
-      aria-modal="true"
-      use:focusDialog
-      tabindex="-1"
-    >
-      <div class="modal-dialog" role="document" style="max-width: 460px;">
-        <div class="modal-header">
-          <h2 class="modal-title">Select Archive Snapshot</h2>
-          <button class="icon-btn" onclick={() => showSnapshotDropdown = false}>
-            <span class="material-symbols-outlined">close</span>
+        <div class="col-order-footer">
+          <button type="button" class="col-order-btn-text" onclick={resetColumns}>Reset</button>
+          <button
+            type="button"
+            class="col-order-btn-text col-order-btn-done"
+            onclick={() => { showColCustomizer = false; openColDropdownSlot = null; }}
+          >
+            Done
           </button>
         </div>
-        <div class="modal-body">
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            {#each captures as cap}
-              <button
-                class="col-option-row"
-                style="border: none; width: 100%; text-align: left;"
-                class:active={capture?.sequence === cap.sequence}
-                onclick={() => changeCapture(cap.sequence)}
-              >
-                <div>
-                  <div style="font-weight: 500; color: var(--google-text);">Snapshot #{cap.sequence}</div>
-                  <div style="font-size: 12px; color: var(--google-text-secondary);">{formatCaptureTime(cap.committed_at)}</div>
-                </div>
-                <span style="font-size: 12px; font-weight: 600; color: var(--google-blue);">{cap.contact_count} contacts</span>
-              </button>
-            {/each}
-          </div>
-        </div>
       </div>
     </div>
   {/if}
 
-  <!-- Settings keeps personal preferences, account controls, and About together. -->
+  <!-- Settings keeps personal preferences, capture schedules, account controls, and About together. -->
   {#if showSettingsModal}
     <div class="modal-overlay" use:focusDialog role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1"
       onclick={(e) => { if (e.target === e.currentTarget) showSettingsModal = false; }}
@@ -2403,45 +4155,293 @@
           <button class="icon-btn" aria-label="Close settings" onclick={() => showSettingsModal = false}><span class="material-symbols-outlined">close</span></button>
         </div>
         <nav class="settings-tabs" aria-label="Settings sections">
-          <button aria-pressed={settingsTab === 'preferences'} onclick={() => settingsTab = 'preferences'}>Preferences</button>
-          <button aria-pressed={settingsTab === 'about'} onclick={() => settingsTab = 'about'}>About</button>
+          <button aria-pressed={settingsTab === 'preferences'} onclick={() => settingsTab = 'preferences'}>
+            <span class="material-symbols-outlined">tune</span>
+            Preferences
+          </button>
+          <button aria-pressed={settingsTab === 'schedule'} onclick={() => settingsTab = 'schedule'}>
+            <span class="material-symbols-outlined">schedule</span>
+            Capture Schedule
+          </button>
+          <button aria-pressed={settingsTab === 'about'} onclick={() => settingsTab = 'about'}>
+            <span class="material-symbols-outlined">info</span>
+            About
+          </button>
         </nav>
-        <div class="modal-body">
+        <div class="modal-body settings-body">
+          {#if settingsError}<p class="settings-error" role="alert">{settingsError}</p>{/if}
+
           {#if settingsTab === 'preferences'}
-            {#if settingsError}<p class="settings-error" role="alert">{settingsError}</p>{/if}
-            <section class="settings-section" aria-labelledby="appearance-title">
-              <h3 id="appearance-title">Appearance</h3>
-              <p>Choose a theme. System follows your device’s appearance automatically.</p>
-              <div class="theme-options" role="group" aria-label="Color theme">
-                {#each [{value: 'system', label: 'System', icon: 'desktop_windows'}, {value: 'light', label: 'Light', icon: 'light_mode'}, {value: 'dark', label: 'Dark', icon: 'dark_mode'}] as option}
-                  <button aria-pressed={preferences.theme === option.value} onclick={() => updatePreferences({theme: option.value as Preferences['theme']})}><span class="material-symbols-outlined" aria-hidden="true">{option.icon}</span>{option.label}</button>
-                {/each}
+            <!-- Appearance & Display -->
+            <div class="settings-section-header">
+              <h3>
+                <span class="material-symbols-outlined">palette</span>
+                Appearance & Display
+              </h3>
+              <p>Customize the look, density, and ordering of your contacts workspace.</p>
+            </div>
+            <div class="settings-card">
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Color theme</span>
+                  <span class="setting-row-desc">Choose Light, Dark, or let the app automatically match your operating system.</span>
+                </div>
+                <div class="theme-options" role="group" aria-label="Color theme">
+                  {#each [{value: 'system', label: 'System', icon: 'desktop_windows'}, {value: 'light', label: 'Light', icon: 'light_mode'}, {value: 'dark', label: 'Dark', icon: 'dark_mode'}] as option}
+                    <button aria-pressed={preferences.theme === option.value} onclick={() => updatePreferences({theme: option.value as Preferences['theme']})}>
+                      <span class="material-symbols-outlined" aria-hidden="true">{option.icon}</span>
+                      {option.label}
+                    </button>
+                  {/each}
+                </div>
               </div>
-              <label class="setting-row"><span>Contact density<small>Adjust the spacing between contact rows.</small></span>
-                <select value={preferences.density} onchange={(e) => updatePreferences({density: e.currentTarget.value as Preferences['density']})}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select>
-              </label>
-              <label class="setting-row"><span>Reduce motion<small>Minimize animations. Your device’s reduced-motion preference is always respected.</small></span><input type="checkbox" checked={preferences.reduceMotion} onchange={(e) => updatePreferences({reduceMotion: e.currentTarget.checked})} /></label>
-              <div class="settings-actions"><button class="btn-secondary" onclick={() => { showSettingsModal = false; showColCustomizer = true; }}>Customize contact columns</button></div>
-            </section>
-            <section class="settings-section" aria-labelledby="capture-settings-title">
-              <h3 id="capture-settings-title">Capture schedule</h3>
-              <label class="setting-row"><span>Background capture<small>Windows checks at 09:00 and at sign-in. A snapshot is captured when the last one is at least seven days old. Requires the installed release app.</small></span><input type="checkbox" checked={scheduled} disabled={scheduleBusy || !scheduleReady} onchange={(event) => { event.currentTarget.checked = scheduled; toggleSchedule(); }} /></label>
-            </section>
-            <section class="settings-section" aria-labelledby="account-settings-title">
-              <h3 id="account-settings-title">Active account</h3>
-              <p class="settings-account">{selected?.email || 'No account selected'}</p>
-              <button class="btn-secondary" style="color: var(--google-danger);" disabled={!selected || busy} onclick={disconnectSelected}>Disconnect account</button>
-            </section>
+
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Contact density</span>
+                  <span class="setting-row-desc">Adjust the vertical spacing between contact table rows.</span>
+                </div>
+                <div class="setting-row-control">
+                  <CustomSelect
+                    options={densityOptions}
+                    value={preferences.density}
+                    onchange={(v) => updatePreferences({ density: v })}
+                    ariaLabel="Contact density"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Sort contacts by</span>
+                  <span class="setting-row-desc">Order contacts by their first name or last name.</span>
+                </div>
+                <div class="setting-row-control">
+                  <CustomSelect
+                    options={sortFieldOptions}
+                    value={nameSortField}
+                    onchange={(v) => setSortField(v as 'first' | 'last')}
+                    ariaLabel="Sort contacts by"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Name sort order</span>
+                  <span class="setting-row-desc">Alphabetical A to Z, or descending Z to A.</span>
+                </div>
+                <div class="setting-row-control">
+                  <CustomSelect
+                    options={sortDirectionOptions}
+                    value={nameSortDirection}
+                    onchange={(v) => setSortDirection(v as 'asc' | 'desc')}
+                    ariaLabel="Name sort order"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Reduce motion</span>
+                  <span class="setting-row-desc">Minimize animations. Your device’s reduced-motion preference is always respected.</span>
+                </div>
+                <div class="setting-row-control">
+                  <ToggleSwitch
+                    checked={preferences.reduceMotion}
+                    onchange={(c) => updatePreferences({ reduceMotion: c })}
+                    label="Reduce motion"
+                  />
+                </div>
+              </div>
+
+              <div class="settings-actions" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--google-border-subtle);">
+                <button class="btn-secondary" onclick={() => { showSettingsModal = false; showColCustomizer = true; }}>
+                  <span class="material-symbols-outlined" style="font-size: 18px;">view_column</span>
+                  Change column order & visibility...
+                </button>
+              </div>
+            </div>
+
+            <!-- Phone & Region Settings -->
+            <div class="settings-section-header">
+              <h3>
+                <span class="material-symbols-outlined">call</span>
+                Phone & Region
+              </h3>
+              <p>Configure how national phone numbers without country prefixes are formatted and dialed.</p>
+            </div>
+            <div class="settings-card">
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Default country code</span>
+                  <span class="setting-row-desc">
+                    Used for phone numbers without an international country code.
+                  </span>
+                </div>
+                <div class="setting-row-control">
+                  <CustomSelect
+                    options={countryOptions}
+                    searchable={true}
+                    searchPlaceholder="Search country or code..."
+                    value={preferences.defaultCountry || 'auto'}
+                    onchange={(val) => updatePreferences({ defaultCountry: String(val) })}
+                    ariaLabel="Default phone country code"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Account -->
+            <div class="settings-section-header">
+              <h3>
+                <span class="material-symbols-outlined">account_circle</span>
+                Active Account
+              </h3>
+              <p>The Google account currently connected for contact sync and snapshots.</p>
+            </div>
+            <div class="settings-card">
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">{selected?.email || 'No account selected'}</span>
+                  <span class="setting-row-desc">
+                    {#if accountProfile?.name}
+                      Google profile: {accountProfile.name}
+                    {:else}
+                      All contact archives and snapshot history remain stored securely on this computer.
+                    {/if}
+                  </span>
+                </div>
+                <div class="setting-row-control">
+                  <button class="btn-secondary" style="color: var(--google-danger);" disabled={!selected || busy} onclick={disconnectSelected}>
+                    Disconnect account
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          {:else if settingsTab === 'schedule'}
+            <!-- Capture Schedule Tab -->
+            <div class="settings-section-header">
+              <h3>
+                <span class="material-symbols-outlined">schedule</span>
+                Automated Background Capture
+              </h3>
+              <p>Configure automatic snapshot intervals, scheduled times, and logon checks to keep your archive up to date.</p>
+            </div>
+
+            <div class="schedule-status-banner">
+              <div class="status-indicator-group">
+                <span class="status-dot" class:active={scheduleConfig.enabled}></span>
+                <div class="status-text-info">
+                  <span class="status-title">{scheduleConfig.enabled ? 'Automatic Capture Active' : 'Automatic Capture Paused'}</span>
+                  <span class="status-subtitle">
+                    {#if due?.next_due_at}
+                      Next snapshot due: {new Date(due.next_due_at).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {#if due.due} &middot; <strong style="color: var(--google-blue);">Due now</strong>{/if}
+                    {:else if scheduleConfig.enabled}
+                      Snapshots will run automatically in the background when contacts are due.
+                    {:else}
+                      Turn on the switch below to automate background snapshot capture.
+                    {/if}
+                  </span>
+                </div>
+              </div>
+              <ToggleSwitch
+                checked={scheduleConfig.enabled}
+                disabled={scheduleBusy || !scheduleReady}
+                onchange={() => toggleSchedule()}
+                label="Toggle automatic capture"
+              />
+            </div>
+
+            <div class="settings-card" style="opacity: {scheduleConfig.enabled ? '1' : '0.5'}; pointer-events: {scheduleConfig.enabled ? 'auto' : 'none'}; transition: opacity 0.2s ease;">
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Capture interval rule</span>
+                  <span class="setting-row-desc">Minimum age of your previous snapshot before a new one is captured. Prevents redundant snapshots if contacts haven't changed.</span>
+                </div>
+                <div class="setting-row-control">
+                  <CustomSelect
+                    options={intervalOptions}
+                    value={scheduleConfig.interval_days}
+                    disabled={!scheduleConfig.enabled || scheduleBusy}
+                    onchange={(val) => updateSchedule({ interval_days: Number(val) })}
+                    ariaLabel="Capture interval"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Preferred daily check time</span>
+                  <span class="setting-row-desc">The time of day Windows triggers the automated capture check.</span>
+                </div>
+                <div class="setting-row-control">
+                  <input
+                    type="time"
+                    class="schedule-time-input"
+                    value={scheduleConfig.time_of_day || '09:00'}
+                    disabled={!scheduleConfig.enabled || scheduleBusy}
+                    onchange={(e) => updateSchedule({ time_of_day: e.currentTarget.value })}
+                    aria-label="Preferred daily check time"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Run at user sign-in (Logon)</span>
+                  <span class="setting-row-desc">Checks if a capture is due whenever you log into Windows.</span>
+                </div>
+                <div class="setting-row-control">
+                  <ToggleSwitch
+                    checked={scheduleConfig.run_at_logon}
+                    disabled={!scheduleConfig.enabled || scheduleBusy}
+                    onchange={(c) => updateSchedule({ run_at_logon: c })}
+                    label="Run at logon"
+                  />
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Run daily at preferred time</span>
+                  <span class="setting-row-desc">Schedules a recurring Windows background task at your specified time.</span>
+                </div>
+                <div class="setting-row-control">
+                  <ToggleSwitch
+                    checked={scheduleConfig.run_daily}
+                    disabled={!scheduleConfig.enabled || scheduleBusy}
+                    onchange={(c) => updateSchedule({ run_daily: c })}
+                    label="Run daily"
+                  />
+                </div>
+              </div>
+            </div>
+
           {:else}
+            <!-- About Tab -->
             <section class="settings-section about-copy" aria-labelledby="about-title">
-              <div class="about-brand"><img class="brand-logo" src={brandLogo} alt="" /><div><h3 id="about-title">Contact History</h3><p>Version {appVersion}</p></div></div>
+              <div class="about-brand">
+                <img class="brand-logo" src={brandLogo} alt="" />
+                <div>
+                  <h3 id="about-title">Contact History</h3>
+                  <p>Version {appVersion}</p>
+                </div>
+              </div>
               <p>A local archive of your Google contacts, with snapshots that let you revisit details and see what changed over time.</p>
               <p>Browse earlier snapshots, compare revisions, and export contacts or back up an account using the sidebar’s export and archive actions.</p>
-              <p>Contact archives are stored on this computer. Connecting and capturing contacts requires access to your Google account.</p>
+              <p>Contact archives are stored privately on this computer. Connecting and capturing contacts requires access to your Google account.</p>
             </section>
           {/if}
         </div>
-        <div class="modal-footer"><span class="settings-note" role="status">{settingsTab === 'preferences' ? preferenceNotice : 'Contact History · Local contact archiving'}</span><button class="btn-primary" onclick={() => showSettingsModal = false}>Done</button></div>
+        <div class="modal-footer">
+          <span class="settings-note" role="status">
+            {settingsTab === 'preferences' || settingsTab === 'schedule' ? preferenceNotice : 'Contact History · Local contact archiving'}
+          </span>
+          <button class="btn-primary" onclick={() => showSettingsModal = false}>Done</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -2456,37 +4456,257 @@
       use:focusDialog
       tabindex="-1"
     >
-      <div class="modal-dialog" role="document" style="max-width: 680px; width: 90%;">
+      <div class="modal-dialog" role="document" style="max-width: 940px; width: 95%; height: 80vh; display: flex; flex-direction: column;">
         <div class="modal-header">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span class="material-symbols-outlined" style="color: var(--google-blue);">data_object</span>
-            <h2 class="modal-title">Contact Payload: {getDisplayName(detail)}</h2>
+            <h2 class="modal-title">Raw Contact Payload: {getDisplayName(detail)}</h2>
           </div>
           <button class="icon-btn" onclick={() => showRawDataModal = false}>
             <span class="material-symbols-outlined">close</span>
           </button>
         </div>
-        <div class="modal-body" style="user-select: text; -webkit-user-select: text;">
-          <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
-            <button class="btn-secondary" onclick={() => copyFieldValue('modal-raw', JSON.stringify(detail?.payload, null, 2))}>
-              <span class="material-symbols-outlined" style="font-size: 16px;">content_copy</span>
-              <span>{copiedFieldKey === 'modal-raw' ? 'Copied!' : 'Copy JSON'}</span>
-            </button>
-            <button class="btn-secondary" onclick={() => downloadContactJson(detail!)}>
-              <span class="material-symbols-outlined" style="font-size: 16px;">download</span>
-              <span>Download JSON</span>
-            </button>
-            <button class="btn-secondary" onclick={() => downloadContactVcf(detail!)}>
-              <span class="material-symbols-outlined" style="font-size: 16px;">contact_page</span>
-              <span>Download vCard</span>
-            </button>
-          </div>
-          <pre class="diff-pre raw-data-pre" style="max-height: 420px; font-size: 12px; background: var(--google-surface); user-select: text; -webkit-user-select: text; cursor: text;">{JSON.stringify(detail.payload, null, 2)}</pre>
+        <div class="modal-body" style="flex: 1; overflow: hidden; display: flex; flex-direction: column; padding-bottom: 0;">
+          <ContactPayloadViewer payload={detail.payload as Record<string, unknown>} maxHeight="100%" />
         </div>
         <div class="modal-footer">
+          <button class="btn-secondary" onclick={() => downloadContactJson(detail!)}>
+            <span class="material-symbols-outlined" style="font-size: 16px;">download</span>
+            <span>Download JSON</span>
+          </button>
+          <button class="btn-secondary" onclick={() => downloadContactVcf(detail!)}>
+            <span class="material-symbols-outlined" style="font-size: 16px;">contact_page</span>
+            <span>Download vCard</span>
+          </button>
           <button class="btn-primary" onclick={() => showRawDataModal = false}>Close</button>
         </div>
       </div>
+    </div>
+  {/if}
+
+  <!-- Export Contact Photos Modal -->
+  {#if showPhotoExportModal}
+    <div
+      class="modal-overlay"
+      onclick={(e) => { if (e.target === e.currentTarget && !photoExportBusy) showPhotoExportModal = false; }}
+      onkeydown={(e) => { if (e.key === 'Escape' && !photoExportBusy) showPhotoExportModal = false; }}
+      role="dialog"
+      aria-modal="true"
+      use:focusDialog
+      tabindex="-1"
+    >
+      <div class="modal-dialog" role="document" style="max-width: 520px; width: 90%;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-outlined" style="color: var(--google-blue);">photo_library</span>
+            <h2 class="modal-title">Export Contact Photos</h2>
+          </div>
+          <button class="icon-btn" onclick={() => { if (!photoExportBusy) showPhotoExportModal = false; }} disabled={photoExportBusy}>
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+          <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.5; margin: 0;">
+            Download and export all profile contact images in their highest available resolution from Google CDN. Images are saved with contact names as filenames.
+          </p>
+
+          <!-- Format Choice -->
+          <div>
+            <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px; color: var(--text-primary);">
+              Export Format
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <button
+                type="button"
+                class="export-option-card"
+                class:selected={photoExportFormat === 'folder'}
+                onclick={() => photoExportFormat = 'folder'}
+                disabled={photoExportBusy}
+              >
+                <span class="material-symbols-outlined" style="font-size: 28px; color: var(--google-blue);">folder</span>
+                <div style="font-weight: 600; font-size: 13px;">Folder</div>
+                <div style="font-size: 11px; color: var(--text-secondary); text-align: center;">Extract photos directly into a selected directory</div>
+              </button>
+              <button
+                type="button"
+                class="export-option-card"
+                class:selected={photoExportFormat === 'zip'}
+                onclick={() => photoExportFormat = 'zip'}
+                disabled={photoExportBusy}
+              >
+                <span class="material-symbols-outlined" style="font-size: 28px; color: var(--google-blue);">folder_zip</span>
+                <div style="font-weight: 600; font-size: 13px;">ZIP Archive</div>
+                <div style="font-size: 11px; color: var(--text-secondary); text-align: center;">Bundle all photos into a single compressed .zip file</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Options -->
+          <div style="background: var(--google-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px;">
+            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; user-select: none;">
+              <input
+                type="checkbox"
+                bind:checked={photoExportIncludeDefault}
+                disabled={photoExportBusy}
+                style="margin-top: 3px;"
+              />
+              <div>
+                <div style="font-size: 13px; font-weight: 500; color: var(--text-primary);">Include default / generated letter avatars</div>
+                <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
+                  Uncheck to export only custom uploaded photos, skipping generic Google placeholder icons.
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <!-- Progress during export -->
+          {#if photoExportBusy}
+            <div style="background: var(--google-blue-pill); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 500; color: var(--text-primary);">
+                <span>{photoExportProgress ? `Exporting: ${photoExportProgress.name}` : 'Preparing export...'}</span>
+                {#if photoExportProgress && photoExportProgress.total > 0}
+                  <span>{photoExportProgress.current} / {photoExportProgress.total}</span>
+                {/if}
+              </div>
+              <div class="banner-progress-bar" style="width: 100%; height: 8px;">
+                <div
+                  class="banner-progress-fill"
+                  style="width: {photoExportProgress && photoExportProgress.total > 0 ? Math.min(100, Math.round((photoExportProgress.current / photoExportProgress.total) * 100)) : 15}%;"
+                ></div>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Result Success Banner -->
+          {#if photoExportResult}
+            <div style="background: rgba(52, 168, 83, 0.1); border: 1px solid #34a853; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 6px; color: #1e8e3e; font-weight: 600; font-size: 13px;">
+                <span class="material-symbols-outlined" style="font-size: 18px;">check_circle</span>
+                <span>Export Completed Successfully!</span>
+              </div>
+              <div style="font-size: 12px; color: var(--text-primary);">
+                Exported <strong>{photoExportResult.exported_photos}</strong> photo(s) to:
+                <div style="font-family: monospace; font-size: 11px; margin-top: 4px; word-break: break-all; background: var(--surface-base); padding: 6px 8px; border-radius: 6px;">
+                  {photoExportResult.destination}
+                </div>
+              </div>
+              <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
+                {photoExportResult.skipped_no_photo} contact(s) had no photo.
+                {#if photoExportResult.skipped_default > 0}
+                  {photoExportResult.skipped_default} default avatar(s) skipped.
+                {/if}
+              </div>
+            </div>
+          {/if}
+
+          <!-- Error Banner -->
+          {#if photoExportError}
+            <div class="error-banner" style="margin: 0;">
+              <span class="material-symbols-outlined">error</span>
+              <span>{photoExportError}</span>
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+          {#if photoExportResult}
+            <button class="btn-primary" onclick={() => showPhotoExportModal = false}>Done</button>
+          {:else}
+            <button class="btn-secondary" onclick={() => showPhotoExportModal = false} disabled={photoExportBusy}>Cancel</button>
+            <button class="btn-primary" onclick={startPhotoExport} disabled={photoExportBusy}>
+              {#if photoExportBusy}
+                <span>Exporting...</span>
+              {:else}
+                <span class="material-symbols-outlined" style="font-size: 16px; margin-right: 4px;">download</span>
+                <span>Export Photos</span>
+              {/if}
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Photos Modal (Google Contacts Authentic Style) -->
+  {#if showPhotosModal && detail}
+    {@const contactPhotos = getContactPhotos(detail, media, avatarMap)}
+    <div
+      class="modal-overlay"
+      use:focusDialog
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="photos-modal-title"
+      tabindex="-1"
+      onclick={(e) => { if (e.target === e.currentTarget) { showPhotosModal = false; photoInfoTooltip = null; } }}
+      onkeydown={(e) => { if (e.key === 'Escape') { showPhotosModal = false; photoInfoTooltip = null; } }}
+    >
+      <div class="modal-dialog photos-dialog" role="document">
+        <div class="modal-header photos-modal-header">
+          <h2 class="modal-title" id="photos-modal-title">Photos</h2>
+          <button class="icon-btn" aria-label="Close photos dialog" onclick={() => { showPhotosModal = false; photoInfoTooltip = null; }}>
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <div class="modal-body photos-modal-body">
+          {#if contactPhotos.length === 0}
+            <div class="photos-empty-state">
+              <div class="photo-circle empty-avatar" style="background-color: {getAvatarColor(getDisplayName(detail))};">
+                <span>{getInitials(getDisplayName(detail))}</span>
+              </div>
+              <p class="photos-empty-text">No photos held for this contact.</p>
+            </div>
+          {:else}
+            <div class="photos-modal-grid">
+              {#each contactPhotos as photo}
+                <div class="photo-card" aria-label="{photo.label}">
+                  <div class="photo-circle">
+                    <img
+                      src={photo.displayUrl}
+                      alt={photo.label}
+                      referrerpolicy="no-referrer"
+                      onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                    />
+                  </div>
+                  <div class="photo-label-row">
+                    <span class="photo-label">{photo.label}</span>
+                    {#if photo.type === 'profile'}
+                      {@const infoText = photo.sourceEmail
+                        ? `This profile picture comes from the account for: ${photo.sourceEmail}`
+                        : 'This profile picture comes from a linked Google Account'}
+                      <span
+                        class="photo-info-icon material-symbols-outlined"
+                        role="button"
+                        tabindex="0"
+                        aria-label={infoText}
+                        onmouseenter={(e) => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          photoInfoTooltip = { text: infoText, x: rect.left + rect.width / 2, y: rect.top - 10 };
+                        }}
+                        onmouseleave={() => { photoInfoTooltip = null; }}
+                        onfocus={(e) => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          photoInfoTooltip = { text: infoText, x: rect.left + rect.width / 2, y: rect.top - 10 };
+                        }}
+                        onblur={() => { photoInfoTooltip = null; }}
+                      >info</span>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <!-- Photo info tooltip — rendered inside the fixed overlay so it is never clipped -->
+      {#if photoInfoTooltip}
+        <div
+          class="photo-info-popover"
+          style="left: {photoInfoTooltip.x}px; top: {photoInfoTooltip.y}px;"
+          role="tooltip"
+        >
+          {photoInfoTooltip.text}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

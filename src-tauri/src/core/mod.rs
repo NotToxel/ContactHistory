@@ -4,5 +4,6 @@ pub mod export;
 pub mod google;
 pub mod import;
 pub mod media;
+pub mod photo_export;
 pub mod scheduler;
 pub mod storage;
