@@ -189,6 +189,8 @@
   let selected: Account | undefined = $state();
   let accountProfile = $state<{ email: string; name?: string | null; picture?: string | null } | null>(null);
   let sidebarCollapsed = $state(false);
+  let sidebarWidth = $state(280);
+  let isResizingSidebar = $state(false);
   let captures: Capture[] = $state([]);
   let capture: Capture | undefined = $state();
   let groups: GroupRow[] = $state([]);
@@ -218,6 +220,24 @@
   let changes: Change[] = $state([]);
   let chosenChange: Change | undefined = $state();
   let pageView: Page = $state('onboarding');
+  type NavigationEntry = {
+    contactHistoryNavigation: true;
+    index: number;
+    accountId: string | null;
+    snapshot: number | null;
+    page: Page;
+    contact: string | null;
+    groups: string[];
+    changesTab: 'comparison' | 'changelog';
+    compareBase: number | null;
+    compareTarget: number | null;
+  };
+  let navigationIndex = $state(0);
+  let navigationMaxIndex = $state(0);
+  let navigationReady = false;
+  let restoringNavigation = false;
+  let navigationQueued = false;
+  let navigationRequest = 0;
   const hasData = $derived(Boolean(selected && captures.length > 0));
   let dateInput = $state('');
   let search = $state('');
@@ -1078,9 +1098,101 @@
   }
 
   // Navigation & Data Refresh
+  function currentNavigation(): NavigationEntry {
+    return {
+      contactHistoryNavigation: true,
+      index: navigationIndex,
+      accountId: selected?.id ?? null,
+      snapshot: capture?.sequence ?? null,
+      page: pageView,
+      contact: detail?.resource_name ?? null,
+      groups: [...selectedGroups],
+      changesTab,
+      compareBase: compareBaseSeq,
+      compareTarget: compareTargetSeq,
+    };
+  }
+
+  function recordNavigation() {
+    if (!navigationReady || restoringNavigation || navigationQueued) return;
+    navigationQueued = true;
+    queueMicrotask(() => {
+      navigationQueued = false;
+      if (restoringNavigation) return;
+      const next = currentNavigation();
+      const previous = window.history.state as NavigationEntry | null;
+      if (previous?.contactHistoryNavigation) {
+        const { index: _oldIndex, ...oldDestination } = previous;
+        const { index: _newIndex, ...newDestination } = next;
+        if (JSON.stringify(oldDestination) === JSON.stringify(newDestination)) return;
+      }
+      navigationIndex++;
+      navigationMaxIndex = navigationIndex;
+      window.history.pushState({ ...next, index: navigationIndex }, '');
+    });
+  }
+
+  function goBack() {
+    if (navigationIndex > 0) window.history.back();
+  }
+
+  function goForward() {
+    if (navigationIndex < navigationMaxIndex) window.history.forward();
+  }
+
+  async function restoreNavigation(entry: NavigationEntry) {
+    const request = ++navigationRequest;
+    restoringNavigation = true;
+    navigationIndex = entry.index;
+    try {
+      const account = accounts.find((item) => item.id === entry.accountId);
+      if (account && selected?.id !== account.id) await selectAccount(account);
+      if (request !== navigationRequest) return;
+      if (entry.snapshot && capture?.sequence !== entry.snapshot && captures.some((item) => item.sequence === entry.snapshot)) {
+        await changeCapture(entry.snapshot);
+      }
+      if (request !== navigationRequest) return;
+      selectedGroups = entry.groups.filter((name) => groups.some((group) => group.resource_name === name));
+      offset = 0;
+      updateDisplayedContacts();
+      pageView = entry.page;
+      changesTab = entry.changesTab;
+      compareBaseSeq = entry.compareBase;
+      compareTargetSeq = entry.compareTarget;
+      if (pageView === 'changes' && changesTab === 'comparison') refreshChangesComparison();
+      detail = undefined;
+      if (entry.contact && pageView === 'contacts') {
+        const contact = allSnapshotContacts.find((item) => item.resource_name === entry.contact);
+        if (contact) await selectContact(contact);
+      }
+      showSettingsModal = false;
+      showRawDataModal = false;
+      showPhotosModal = false;
+      showAccountMenu = false;
+      showSnapshotDropdown = false;
+      error = '';
+    } finally {
+      if (request === navigationRequest) restoringNavigation = false;
+    }
+  }
+
+  function handlePopState(event: PopStateEvent) {
+    const entry = event.state as NavigationEntry | null;
+    if (entry?.contactHistoryNavigation) void restoreNavigation(entry);
+  }
+
+  function handleNativeNavigation(event: MouseEvent) {
+    if (event.button === 3 || event.button === 4) {
+      event.preventDefault();
+      if (event.button === 3) goBack();
+      else goForward();
+    }
+  }
+
   function navigate(to: Page) {
     pageView = to;
     error = '';
+    recordNavigation();
   }
 
   async function refreshAccounts() {
@@ -1383,6 +1495,7 @@
     compareBaseSeq = compareTargetSeq;
     compareTargetSeq = temp;
     refreshChangesComparison();
+    recordNavigation();
   }
 
   function compareSnapshotWithPrior(seq: number) {
@@ -1391,6 +1504,7 @@
     compareBaseSeq = prior ? prior.sequence : seq;
     changesTab = 'comparison';
     refreshChangesComparison();
+    recordNavigation();
   }
 
   function toggleSnapshotCollapse(seq: number) {
@@ -1492,6 +1606,7 @@
     previewSequence = null;
     previewBusy = false;
     detail = contact;
+    recordNavigation();
     showStickyName = false;
     isScrolled = false;
     showDetailMenu = false;
@@ -1537,6 +1652,7 @@
     offset = 0;
     detail = undefined;
     updateDisplayedContacts();
+    recordNavigation();
   }
 
   function toggleLabelFilter(groupResourceName: string) {
@@ -1549,6 +1665,7 @@
     offset = 0;
     detail = undefined;
     updateDisplayedContacts();
+    recordNavigation();
   }
 
   function isolateLabelFilter(groupResourceName: string) {
@@ -1557,6 +1674,7 @@
     offset = 0;
     detail = undefined;
     updateDisplayedContacts();
+    recordNavigation();
   }
 
   function clearLabelFilter() {
@@ -1565,6 +1683,7 @@
     offset = 0;
     detail = undefined;
     updateDisplayedContacts();
+    recordNavigation();
   }
 
   async function changeCapture(sequence: number) {
@@ -1575,6 +1694,7 @@
     await refreshGroups();
     await refreshContacts();
     await refreshChanges();
+    recordNavigation();
   }
 
   async function previewContactRevision(entry: ContactHistoryEntry) {
@@ -1949,6 +2069,57 @@
     } catch (_) {}
   }
 
+  // Sidebar Resizing Logic
+  function startSidebarResize(e: MouseEvent) {
+    e.preventDefault();
+    isResizingSidebar = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMouseMove(moveEvent: MouseEvent) {
+      const maxAllowed = Math.min(480, Math.floor(window.innerWidth * 0.45));
+      const newWidth = Math.min(maxAllowed, Math.max(220, moveEvent.clientX));
+      sidebarWidth = newWidth;
+    }
+
+    function onMouseUp() {
+      isResizingSidebar = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      try {
+        localStorage.setItem('sidebar_width', String(sidebarWidth));
+      } catch (_) {}
+    }
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }
+
+  function resetSidebarWidth() {
+    sidebarWidth = 280;
+    try {
+      localStorage.removeItem('sidebar_width');
+    } catch (_) {}
+  }
+
+  function handleSidebarResizerKeyDown(e: KeyboardEvent) {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      sidebarWidth = Math.max(220, sidebarWidth - 10);
+      try { localStorage.setItem('sidebar_width', String(sidebarWidth)); } catch (_) {}
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const maxAllowed = Math.min(480, Math.floor(window.innerWidth * 0.45));
+      sidebarWidth = Math.min(maxAllowed, sidebarWidth + 10);
+      try { localStorage.setItem('sidebar_width', String(sidebarWidth)); } catch (_) {}
+    } else if (e.key === 'Enter' || e.key === 'Home') {
+      e.preventDefault();
+      resetSidebarWidth();
+    }
+  }
+
   // Settings Actions
   async function updateSchedule(patch: Partial<ScheduleConfig>) {
     if (scheduleBusy || !scheduleReady) return;
@@ -2217,6 +2388,12 @@
   let unlistenProgress: UnlistenFn | undefined;
 
   function handleGlobalKeyDown(event: KeyboardEvent) {
+    if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      event.preventDefault();
+      if (event.key === 'ArrowLeft') goBack();
+      else goForward();
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
       if (!hasData || pageView === 'onboarding') return;
       event.preventDefault();
@@ -3007,6 +3184,8 @@
 
   onMount(async () => {
     window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('mouseup', handleNativeNavigation);
     window.addEventListener('click', handleWindowClick);
     window.addEventListener('contextmenu', handleGlobalContextMenu);
     colorScheme.addEventListener('change', syncSystemTheme);
@@ -3051,6 +3230,13 @@
       if (savedSortField === 'first' || savedSortField === 'last') nameSortField = savedSortField;
       const savedSortDir = localStorage.getItem('contacts_sort_dir');
       if (savedSortDir === 'asc' || savedSortDir === 'desc') nameSortDirection = savedSortDir;
+      const savedSidebarWidth = localStorage.getItem('sidebar_width');
+      if (savedSidebarWidth) {
+        const sw = parseInt(savedSidebarWidth, 10);
+        if (!isNaN(sw) && sw >= 220 && sw <= 480) {
+          sidebarWidth = sw;
+        }
+      }
     } catch (_) {}
 
     // Window maximized state check
@@ -3063,6 +3249,15 @@
     }
 
     await refreshAccounts();
+    const existingEntry = window.history.state as NavigationEntry | null;
+    if (existingEntry?.contactHistoryNavigation) {
+      navigationIndex = existingEntry.index;
+      navigationMaxIndex = existingEntry.index;
+      await restoreNavigation(existingEntry);
+    } else {
+      window.history.replaceState(currentNavigation(), '');
+    }
+    navigationReady = true;
 
     // Listen for real-time capture progress
     window.addEventListener('resize', updateStickyState);
@@ -3074,6 +3269,8 @@
   onDestroy(() => {
     unlistenProgress?.();
     window.removeEventListener('keydown', handleGlobalKeyDown);
+    window.removeEventListener('popstate', handlePopState);
+    window.removeEventListener('mouseup', handleNativeNavigation);
     window.removeEventListener('click', handleWindowClick);
     window.removeEventListener('contextmenu', handleGlobalContextMenu);
     window.removeEventListener('resize', updateStickyState);
@@ -3087,6 +3284,12 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header class="topbar" onmousedown={onTopbarMouseDown}>
     <div class="topbar-left" data-tauri-drag-region>
+      <button class="icon-btn" aria-label="Back" title="Back (Alt+Left)" disabled={navigationIndex === 0} onclick={goBack}>
+        <span class="material-symbols-outlined">arrow_back</span>
+      </button>
+      <button class="icon-btn" aria-label="Forward" title="Forward (Alt+Right)" disabled={navigationIndex >= navigationMaxIndex} onclick={goForward}>
+        <span class="material-symbols-outlined">arrow_forward</span>
+      </button>
       {#if hasData && pageView !== 'onboarding'}
         <button
           class="icon-btn"
@@ -3577,7 +3780,7 @@
                 bind:this={topNavEl}
               >
                 <div class="detail-top-nav-left">
-                  <button class="icon-btn" onclick={() => detail = undefined} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
+                  <button class="icon-btn" onclick={() => { detail = undefined; recordNavigation(); }} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
                     <span class="material-symbols-outlined">arrow_back</span>
                   </button>
                   <div class="detail-sticky-profile" class:visible={showStickyName}>
@@ -5437,7 +5640,7 @@
               aria-selected={changesTab === 'comparison'}
               class="segmented-nav-btn"
               class:active={changesTab === 'comparison'}
-              onclick={() => (changesTab = 'comparison')}
+              onclick={() => { changesTab = 'comparison'; recordNavigation(); }}
             >
               <span class="material-symbols-outlined">compare_arrows</span>
               <span>Snapshot Comparison</span>
@@ -5450,6 +5653,7 @@
               class:active={changesTab === 'changelog'}
               onclick={() => {
                 changesTab = 'changelog';
+                recordNavigation();
                 if (changelogList.length === 0) refreshAllChanges();
               }}
             >
@@ -5467,7 +5671,7 @@
             <!-- TAB 1: SNAPSHOT COMPARISON -->
             {#if captures.length > 1}
               <div class="comparison-bar">
-                <SnapshotSelect label="Base snapshot" {captures} value={compareBaseSeq} onchange={(value) => { compareBaseSeq = value; refreshChangesComparison(); }} />
+                <SnapshotSelect label="Base snapshot" {captures} value={compareBaseSeq} onchange={(value) => { compareBaseSeq = value; refreshChangesComparison(); recordNavigation(); }} />
 
                 <button
                   type="button"
@@ -5479,7 +5683,7 @@
                   <span class="material-symbols-outlined">swap_horiz</span>
                 </button>
 
-                <SnapshotSelect label="Compare with" {captures} value={compareTargetSeq} onchange={(value) => { compareTargetSeq = value; refreshChangesComparison(); }} />
+                <SnapshotSelect label="Compare with" {captures} value={compareTargetSeq} onchange={(value) => { compareTargetSeq = value; refreshChangesComparison(); recordNavigation(); }} />
 
                 <div class="compare-presets" role="group" aria-label="Comparison shortcuts">
                   <button
@@ -5492,6 +5696,7 @@
                         const prior = captures.find((c) => c.sequence < curSeq);
                         compareBaseSeq = prior ? prior.sequence : curSeq;
                         refreshChangesComparison();
+                        recordNavigation();
                       }
                     }}
                   >
@@ -5505,6 +5710,7 @@
                         compareBaseSeq = captures[captures.length - 1].sequence;
                         compareTargetSeq = captures[0].sequence;
                         refreshChangesComparison();
+                        recordNavigation();
                       }
                     }}
                   >
