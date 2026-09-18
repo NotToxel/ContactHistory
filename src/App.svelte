@@ -78,6 +78,8 @@
   import ContactPayloadViewer from './lib/ContactPayloadViewer.svelte';
   import { computeContactDiff, extractDisplayName } from './lib/diff';
   import { generateContactCsv } from './lib/export-csv';
+  import ContextMenu from './lib/ContextMenu.svelte';
+  import { openContextMenu, type ContextMenuItem } from './lib/context-menu.svelte';
   import {
     api,
     listenCaptureProgress,
@@ -2004,9 +2006,755 @@
     }
   }
 
+  function formatContactSummary(c: Contact): string {
+    const payload = c.payload || {};
+    const lines: string[] = [getDisplayName(c)];
+    const org = getOrganization(payload);
+    if (org.title || org.org) {
+      lines.push([org.title, org.org].filter(Boolean).join(' • '));
+    }
+    const email = getPrimaryEmail(payload);
+    if (email) lines.push(`Email: ${email}`);
+    const phone = getPrimaryPhone(payload);
+    if (phone) lines.push(`Phone: ${phone}`);
+    const address = getPrimaryAddress(payload);
+    if (address) lines.push(`Address: ${address}`);
+    const notes = getNotes(payload);
+    if (notes) lines.push(`Notes: ${notes}`);
+    return lines.join('\n');
+  }
+
+  async function handleGlobalContextMenu(e: MouseEvent) {
+    // 1. Strictly suppress the default Windows / WebView2 context menu everywhere
+    e.preventDefault();
+
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+
+    const items: ContextMenuItem[] = [];
+    let header: string | undefined;
+    let subHeader: string | undefined;
+
+    // 2. Input or Textarea Context
+    const isInput = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+    if (isInput) {
+      const inputEl = target as HTMLInputElement | HTMLTextAreaElement;
+      const selStart = inputEl.selectionStart ?? 0;
+      const selEnd = inputEl.selectionEnd ?? 0;
+      const hasSelection = selStart !== selEnd;
+      const isReadonly = inputEl.readOnly || inputEl.disabled;
+      const hasValue = Boolean(inputEl.value && inputEl.value.length > 0);
+
+      header = inputEl.placeholder || (inputEl instanceof HTMLInputElement && inputEl.type === 'search' ? 'Search' : 'Text Input');
+
+      items.push({
+        id: 'input-cut',
+        label: 'Cut',
+        icon: 'content_cut',
+        shortcut: 'Ctrl+X',
+        disabled: !hasSelection || isReadonly,
+        action: async () => {
+          const text = inputEl.value.substring(selStart, selEnd);
+          await navigator.clipboard.writeText(text);
+          inputEl.setRangeText('', selStart, selEnd, 'end');
+          inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        },
+      });
+
+      items.push({
+        id: 'input-copy',
+        label: 'Copy',
+        icon: 'content_copy',
+        shortcut: 'Ctrl+C',
+        disabled: !hasSelection,
+        action: async () => {
+          const text = inputEl.value.substring(selStart, selEnd);
+          await navigator.clipboard.writeText(text);
+        },
+      });
+
+      items.push({
+        id: 'input-paste',
+        label: 'Paste',
+        icon: 'content_paste',
+        shortcut: 'Ctrl+V',
+        disabled: isReadonly,
+        action: async () => {
+          try {
+            const text = await navigator.clipboard.readText();
+            inputEl.setRangeText(text, selStart, selEnd, 'end');
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          } catch (_) {}
+        },
+      });
+
+      items.push({
+        id: 'input-select-all',
+        label: 'Select All',
+        icon: 'select_all',
+        shortcut: 'Ctrl+A',
+        disabled: !hasValue,
+        action: () => {
+          inputEl.select();
+        },
+      });
+
+      if (inputEl === searchInputEl || inputEl.classList.contains('topbar-search-input')) {
+        items.push({
+          id: 'input-clear-search',
+          label: 'Clear Search',
+          icon: 'backspace',
+          divider: true,
+          disabled: !hasValue,
+          action: () => {
+            clearSearch();
+          },
+        });
+      } else {
+        items.push({
+          id: 'input-clear',
+          label: 'Clear',
+          icon: 'backspace',
+          divider: true,
+          disabled: !hasValue || isReadonly,
+          action: () => {
+            inputEl.value = '';
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          },
+        });
+      }
+
+      openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+      return;
+    }
+
+    // 3. Active Text Selection across the page
+    const selection = window.getSelection();
+    const selectedText = selection ? selection.toString().trim() : '';
+
+    // 4. Contact Item Context (Contacts Table Row or Search Result Item)
+    const contactRowEl = target.closest('[data-contact-res]') as HTMLElement | null;
+    const contactRes = contactRowEl?.dataset.contactRes;
+    const contact = contactRes ? allSnapshotContacts.find((c) => c.resource_name === contactRes) : undefined;
+
+    if (contact) {
+      const displayName = getDisplayName(contact);
+      const email = getPrimaryEmail(contact.payload);
+      const phone = getPrimaryPhone(contact.payload);
+      header = displayName;
+      subHeader = email || phone || `v${contact.version}`;
+
+      if (selectedText) {
+        items.push({
+          id: 'copy-selection',
+          label: `Copy "${selectedText.length > 20 ? selectedText.slice(0, 18) + '…' : selectedText}"`,
+          icon: 'content_copy',
+          shortcut: 'Ctrl+C',
+          action: async () => {
+            await navigator.clipboard.writeText(selectedText);
+          },
+        });
+      }
+
+      items.push({
+        id: 'contact-view',
+        label: 'View Contact Details',
+        icon: 'person',
+        action: () => {
+          selectContact(contact);
+          if (pageView !== 'contacts') navigate('contacts');
+        },
+      });
+
+      items.push({
+        id: 'contact-copy-name',
+        label: 'Copy Name',
+        icon: 'badge',
+        divider: true,
+        action: async () => {
+          await copyFieldValue('name', displayName);
+        },
+      });
+
+      if (email) {
+        items.push({
+          id: 'contact-copy-email',
+          label: 'Copy Email Address',
+          icon: 'mail',
+          action: async () => {
+            await copyFieldValue('email', email);
+          },
+        });
+        items.push({
+          id: 'contact-send-email',
+          label: 'Send Email',
+          icon: 'send',
+          action: () => {
+            window.open('mailto:' + email, '_blank');
+          },
+        });
+      }
+
+      if (phone) {
+        items.push({
+          id: 'contact-copy-phone',
+          label: 'Copy Phone Number',
+          icon: 'call',
+          action: async () => {
+            await copyFieldValue('phone', phone);
+          },
+        });
+      }
+
+      items.push({
+        id: 'contact-copy-all',
+        label: 'Copy All Details',
+        icon: 'content_copy',
+        action: async () => {
+          const text = formatContactSummary(contact);
+          await copyFieldValue('all', text);
+        },
+      });
+
+      items.push({
+        id: 'contact-export-csv',
+        label: 'Export as Google CSV',
+        icon: 'table_chart',
+        divider: true,
+        action: () => {
+          downloadContactCsv(contact);
+        },
+      });
+
+      items.push({
+        id: 'contact-export-vcf',
+        label: 'Export as vCard (.vcf)',
+        icon: 'contact_page',
+        action: () => {
+          downloadContactVcf(contact);
+        },
+      });
+
+      items.push({
+        id: 'contact-export-json',
+        label: 'Export as JSON',
+        icon: 'download',
+        action: () => {
+          downloadContactJson(contact);
+        },
+      });
+
+      items.push({
+        id: 'contact-view-raw',
+        label: 'View Raw JSON Payload',
+        icon: 'data_object',
+        divider: true,
+        action: () => {
+          detail = contact;
+          showRawDataModal = true;
+        },
+      });
+
+      openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+      return;
+    }
+
+    // 5. Contact Detail View Context
+    if (detail && target.closest('.detail-view')) {
+      const displayName = getDisplayName(detail);
+      const emailTarget = target.closest('[data-context="email"]') as HTMLElement | null;
+      const phoneTarget = target.closest('[data-context="phone"]') as HTMLElement | null;
+      const addressTarget = target.closest('[data-context="address"], .field-address-link') as HTMLElement | null;
+      const avatarTarget = target.closest('.hero-avatar') as HTMLElement | null;
+      const notesTarget = target.closest('[data-context="notes"]') as HTMLElement | null;
+
+      if (emailTarget) {
+        const emailVal = emailTarget.dataset.emailValue || getPrimaryEmail(detail.payload);
+        header = emailVal;
+        subHeader = 'Email Address';
+        items.push({
+          id: 'detail-send-email',
+          label: 'Send Email',
+          icon: 'mail',
+          action: () => {
+            window.open('mailto:' + emailVal, '_blank');
+          },
+        });
+        items.push({
+          id: 'detail-copy-email',
+          label: 'Copy Email Address',
+          icon: 'content_copy',
+          action: async () => {
+            await copyFieldValue('email', emailVal);
+          },
+        });
+        items.push({
+          id: 'detail-copy-contact',
+          label: 'Copy All Contact Details',
+          icon: 'badge',
+          divider: true,
+          action: async () => {
+            await copyFieldValue('all', formatContactSummary(detail!));
+          },
+        });
+        openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+        return;
+      }
+
+      if (phoneTarget) {
+        const phoneVal = phoneTarget.dataset.phoneValue || getPrimaryPhone(detail.payload);
+        header = phoneVal;
+        subHeader = 'Phone Number';
+        items.push({
+          id: 'detail-call-phone',
+          label: 'Call Number',
+          icon: 'call',
+          action: () => {
+            window.open('tel:' + phoneVal, '_blank');
+          },
+        });
+        items.push({
+          id: 'detail-copy-phone',
+          label: 'Copy Phone Number',
+          icon: 'content_copy',
+          action: async () => {
+            await copyFieldValue('phone', phoneVal);
+          },
+        });
+        items.push({
+          id: 'detail-copy-contact',
+          label: 'Copy All Contact Details',
+          icon: 'badge',
+          divider: true,
+          action: async () => {
+            await copyFieldValue('all', formatContactSummary(detail!));
+          },
+        });
+        openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+        return;
+      }
+
+      if (addressTarget) {
+        const addrVal = addressTarget.dataset.addressValue || getPrimaryAddress(detail.payload);
+        header = addrVal;
+        subHeader = 'Address';
+        items.push({
+          id: 'detail-maps-open',
+          label: 'Open in Google Maps',
+          icon: 'map',
+          action: () => {
+            window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addrVal)}`, '_blank');
+          },
+        });
+        items.push({
+          id: 'detail-copy-address',
+          label: 'Copy Address',
+          icon: 'content_copy',
+          action: async () => {
+            await copyFieldValue('address', addrVal);
+          },
+        });
+        openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+        return;
+      }
+
+      if (avatarTarget) {
+        header = displayName;
+        subHeader = 'Profile Photos';
+        items.push({
+          id: 'detail-view-photos',
+          label: 'View Photos Gallery',
+          icon: 'photo_library',
+          action: () => {
+            showPhotosModal = true;
+          },
+        });
+        const avatarSrc = getAvatarSource(detail, media);
+        if (avatarSrc && avatarSrc.startsWith('http')) {
+          items.push({
+            id: 'detail-copy-photo-url',
+            label: 'Copy Photo URL',
+            icon: 'link',
+            action: async () => {
+              await navigator.clipboard.writeText(avatarSrc);
+            },
+          });
+        }
+        openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+        return;
+      }
+
+      if (notesTarget) {
+        const notesVal = notesTarget.dataset.notesValue || getNotes(detail.payload);
+        header = 'Notes';
+        subHeader = displayName;
+        items.push({
+          id: 'detail-copy-notes',
+          label: 'Copy Notes',
+          icon: 'content_copy',
+          action: async () => {
+            await copyFieldValue('notes', notesVal);
+          },
+        });
+        openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+        return;
+      }
+
+      // General Detail View Context
+      header = displayName;
+      subHeader = `v${detail.version} • ${getPrimaryEmail(detail.payload) || ''}`;
+
+      if (selectedText) {
+        items.push({
+          id: 'copy-selection',
+          label: `Copy "${selectedText.length > 20 ? selectedText.slice(0, 18) + '…' : selectedText}"`,
+          icon: 'content_copy',
+          shortcut: 'Ctrl+C',
+          action: async () => {
+            await navigator.clipboard.writeText(selectedText);
+          },
+        });
+      }
+
+      items.push({
+        id: 'detail-copy-name',
+        label: 'Copy Name',
+        icon: 'badge',
+        action: async () => {
+          await copyFieldValue('name', displayName);
+        },
+      });
+
+      items.push({
+        id: 'detail-copy-all',
+        label: 'Copy All Details',
+        icon: 'content_copy',
+        action: async () => {
+          await copyFieldValue('all', formatContactSummary(detail!));
+        },
+      });
+
+      items.push({
+        id: 'detail-view-payload',
+        label: 'View Raw Payload',
+        icon: 'data_object',
+        divider: true,
+        action: () => {
+          showRawDataModal = true;
+        },
+      });
+
+      items.push({
+        id: 'detail-export-csv',
+        label: 'Export Google CSV',
+        icon: 'table_chart',
+        action: () => {
+          downloadContactCsv(detail!);
+        },
+      });
+
+      items.push({
+        id: 'detail-export-vcf',
+        label: 'Export vCard',
+        icon: 'contact_page',
+        action: () => {
+          downloadContactVcf(detail!);
+        },
+      });
+
+      items.push({
+        id: 'detail-export-json',
+        label: 'Export JSON',
+        icon: 'download',
+        action: () => {
+          downloadContactJson(detail!);
+        },
+      });
+
+      items.push({
+        id: 'detail-print',
+        label: 'Print Contact',
+        icon: 'print',
+        divider: true,
+        action: () => {
+          window.print();
+        },
+      });
+
+      items.push({
+        id: 'detail-back',
+        label: 'Back to Contacts List',
+        icon: 'arrow_back',
+        action: () => {
+          detail = undefined;
+        },
+      });
+
+      openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+      return;
+    }
+
+    // 6. Snapshot Item Context (inside snapshot dropdown)
+    const snapshotEl = target.closest('[data-snapshot-seq]') as HTMLElement | null;
+    if (snapshotEl) {
+      const seqStr = snapshotEl.dataset.snapshotSeq;
+      const seq = seqStr ? parseInt(seqStr, 10) : 0;
+      if (seq > 0) {
+        header = `Snapshot #${seq}`;
+        subHeader = 'Archive Snapshot';
+
+        items.push({
+          id: 'snapshot-switch',
+          label: `Switch to Snapshot #${seq}`,
+          icon: 'history',
+          disabled: capture?.sequence === seq,
+          action: () => {
+            changeCapture(seq);
+            showSnapshotDropdown = false;
+          },
+        });
+
+        items.push({
+          id: 'snapshot-compare-prev',
+          label: 'Compare with Prior Snapshot',
+          icon: 'compare_arrows',
+          action: () => {
+            compareSnapshotWithPrior(seq);
+            navigate('changes');
+            showSnapshotDropdown = false;
+          },
+        });
+
+        openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+        return;
+      }
+    }
+
+    // 7. Change Card Context (inside Changes or Changelog tab)
+    const changeCardEl = target.closest('[data-change-card]') as HTMLElement | null;
+    if (changeCardEl) {
+      const changeRes = changeCardEl.dataset.changeRes;
+      const changeName = changeCardEl.dataset.changeName || 'Contact Change';
+      header = changeName;
+      subHeader = 'Snapshot Change Record';
+
+      const matchedContact = changeRes ? allSnapshotContacts.find((c) => c.resource_name === changeRes) : undefined;
+      if (matchedContact) {
+        items.push({
+          id: 'change-view-contact',
+          label: 'View Current Contact Details',
+          icon: 'person',
+          action: () => {
+            selectContact(matchedContact);
+            navigate('contacts');
+          },
+        });
+      }
+
+      items.push({
+        id: 'change-copy-name',
+        label: 'Copy Name',
+        icon: 'badge',
+        action: async () => {
+          await navigator.clipboard.writeText(changeName);
+        },
+      });
+
+      items.push({
+        id: 'change-copy-res',
+        label: 'Copy Resource ID',
+        icon: 'tag',
+        action: async () => {
+          if (changeRes) await navigator.clipboard.writeText(changeRes);
+        },
+      });
+
+      openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+      return;
+    }
+
+    // 8. Label Item Context
+    const labelItemEl = target.closest('[data-label-res]') as HTMLElement | null;
+    if (labelItemEl) {
+      const labelRes = labelItemEl.dataset.labelRes!;
+      const labelName = labelItemEl.dataset.labelName || 'Label';
+      header = labelName;
+      subHeader = 'Contact Label';
+
+      const isFiltered = selectedGroups.includes(labelRes);
+      items.push({
+        id: 'label-toggle',
+        label: isFiltered ? `Remove from filter: "${labelName}"` : `Filter contacts by "${labelName}"`,
+        icon: 'label',
+        action: () => {
+          toggleLabelFilter(labelRes);
+          navigate('contacts');
+        },
+      });
+
+      items.push({
+        id: 'label-isolate',
+        label: `Filter only "${labelName}"`,
+        icon: 'filter_alt',
+        action: () => {
+          isolateLabelFilter(labelRes);
+          navigate('contacts');
+        },
+      });
+
+      items.push({
+        id: 'label-copy-name',
+        label: 'Copy Label Name',
+        icon: 'content_copy',
+        divider: true,
+        action: async () => {
+          await navigator.clipboard.writeText(labelName);
+        },
+      });
+
+      if (selectedGroups.length > 0) {
+        items.push({
+          id: 'label-clear',
+          label: 'Clear All Label Filters',
+          icon: 'label_off',
+          action: () => {
+            clearLabelFilter();
+          },
+        });
+      }
+
+      openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+      return;
+    }
+
+    // 9. General Text Selection without an element context
+    if (selectedText) {
+      header = 'Text Selection';
+      subHeader = `${selectedText.length} characters`;
+
+      items.push({
+        id: 'sel-copy',
+        label: `Copy "${selectedText.length > 24 ? selectedText.slice(0, 22) + '…' : selectedText}"`,
+        icon: 'content_copy',
+        shortcut: 'Ctrl+C',
+        action: async () => {
+          await navigator.clipboard.writeText(selectedText);
+        },
+      });
+
+      items.push({
+        id: 'sel-search',
+        label: `Search in Contacts for "${selectedText.length > 20 ? selectedText.slice(0, 18) + '…' : selectedText}"`,
+        icon: 'search',
+        action: () => {
+          search = selectedText;
+          navigate('contacts');
+          onSearchInput();
+        },
+      });
+
+      items.push({
+        id: 'sel-divider',
+        divider: true,
+        label: '',
+      });
+    }
+
+    // 10. Global / Fallback Default Context
+    header = header || 'Contact History';
+    subHeader = subHeader || `v${appVersion} • ${accountProfile?.name || selected?.email || 'Local Archive'}`;
+
+    items.push({
+      id: 'global-capture',
+      label: 'Take Snapshot Now',
+      icon: 'sync',
+      shortcut: 'Ctrl+R',
+      disabled: busy || !selected,
+      action: () => {
+        captureNow();
+      },
+    });
+
+    items.push({
+      id: 'global-import',
+      label: 'Import Contacts (CSV)...',
+      icon: 'upload',
+      disabled: busy || !selected,
+      action: () => {
+        importCsv();
+      },
+    });
+
+    items.push({
+      id: 'global-export-snapshot',
+      label: 'Export Current Snapshot (CSV)...',
+      icon: 'table_chart',
+      disabled: !capture || capture.contact_count === 0,
+      action: () => {
+        exportSelected('csv');
+      },
+    });
+
+    items.push({
+      id: 'global-nav-contacts',
+      label: 'Go to Contacts',
+      icon: 'person',
+      divider: true,
+      action: () => {
+        detail = undefined;
+        navigate('contacts');
+      },
+    });
+
+    items.push({
+      id: 'global-nav-changes',
+      label: 'Go to Changes',
+      icon: 'history',
+      action: () => {
+        navigate('changes');
+      },
+    });
+
+    items.push({
+      id: 'global-settings',
+      label: 'Settings & Preferences',
+      icon: 'settings',
+      shortcut: 'Ctrl+,',
+      action: () => {
+        showSettingsModal = true;
+      },
+    });
+
+    items.push({
+      id: 'global-theme',
+      label: preferences.theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+      icon: preferences.theme === 'dark' ? 'light_mode' : 'dark_mode',
+      divider: true,
+      action: () => {
+        const nextTheme = preferences.theme === 'dark' ? 'light' : 'dark';
+        updatePreferences({ theme: nextTheme });
+        applyPreferences(preferences);
+      },
+    });
+
+    items.push({
+      id: 'global-refresh',
+      label: 'Refresh Data',
+      icon: 'refresh',
+      action: () => {
+        refreshContacts();
+        refreshGroups();
+        refreshChanges();
+      },
+    });
+
+    openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
+  }
+
   onMount(async () => {
     window.addEventListener('keydown', handleGlobalKeyDown);
     window.addEventListener('click', handleWindowClick);
+    window.addEventListener('contextmenu', handleGlobalContextMenu);
     colorScheme.addEventListener('change', syncSystemTheme);
     api.getScheduleConfig()
       .then((cfg) => {
@@ -2073,6 +2821,7 @@
     unlistenProgress?.();
     window.removeEventListener('keydown', handleGlobalKeyDown);
     window.removeEventListener('click', handleWindowClick);
+    window.removeEventListener('contextmenu', handleGlobalContextMenu);
     window.removeEventListener('resize', updateStickyState);
     colorScheme.removeEventListener('change', syncSystemTheme);
   });
@@ -2147,6 +2896,7 @@
                   onclick={() => selectSearchResult(contact)}
                   onmouseenter={() => searchActiveIndex = idx}
                   data-tauri-drag-region="false"
+                  data-contact-res={contact.resource_name}
                 >
                   <div class="search-avatar-circle" style="background-color: {getAvatarColor(getDisplayName(contact))};">
                     {#if getAvatarSource(contact)}
@@ -2228,6 +2978,7 @@
                     type="button"
                     class="snapshot-popover-item"
                     class:selected={capture?.sequence === cap.sequence}
+                    data-snapshot-seq={cap.sequence}
                     onclick={() => { changeCapture(cap.sequence); showSnapshotDropdown = false; }}
                     role="option"
                     aria-selected={capture?.sequence === cap.sequence}
@@ -2511,6 +3262,8 @@
             <div
               class="nav-item label-nav-item"
               class:active={pageView === 'contacts' && isSelected}
+              data-label-res={group.resource_name}
+              data-label-name={group.name}
               onclick={() => { toggleLabelFilter(group.resource_name); navigate('contacts'); }}
               onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLabelFilter(group.resource_name); navigate('contacts'); } }}
               role="checkbox"
@@ -2762,7 +3515,7 @@
                       </div>
                     {:else}
                       {#each getAllEmails(detail.payload) as email, idx}
-                        <div class="field-item">
+                        <div class="field-item" data-context="email" data-email-value={email.value}>
                           <!-- Show icon only on first email row; spacer on subsequent rows -->
                           {#if idx === 0}
                             <span class="material-symbols-outlined field-icon">mail</span>
@@ -2795,7 +3548,7 @@
                     {/if}
 
                     {#each getAllPhones(detail.payload) as phone, idx}
-                      <div class="field-item">
+                      <div class="field-item" data-context="phone" data-phone-value={phone.value}>
                         <!-- Show icon only on first phone row; spacer on subsequent rows -->
                         {#if idx === 0}
                           <span class="material-symbols-outlined field-icon">call</span>
@@ -2888,11 +3641,13 @@
                         {:else}
                           <span class="field-icon-spacer" style="align-self: flex-start;"></span>
                         {/if}
-                        <div class="field-content field-content--column">
+                        <div class="field-content field-content--column" data-context="address" data-address-value={addr.copyValue}>
                           <!-- Entire address block is a clickable link to Google Maps -->
                           <a
                             class="field-address-lines field-address-link"
                             href={getAddressMapsUrl(addr)}
+                            data-context="address"
+                            data-address-value={addr.copyValue}
                             onclick={(e) => { e.preventDefault(); api.openExternalUrl(getAddressMapsUrl(addr)); }}
                             aria-label="Open {addr.copyValue} in Google Maps"
                           >
@@ -2935,7 +3690,7 @@
 
                     {#if getNotes(detail.payload)}
                       {@const notes = getNotes(detail.payload)}
-                      <div class="field-item">
+                      <div class="field-item" data-context="notes" data-notes-value={notes}>
                         <span class="material-symbols-outlined field-icon">notes</span>
                         <div class="field-content">
                           <span class="field-value text-plain" style="white-space: pre-wrap;">{notes}</span>
@@ -3467,7 +4222,7 @@
                     </td>
                   </tr>
                   {#each favouriteContacts as contact (contact.resource_name)}
-                    <tr class="contact-row" onclick={() => selectContact(contact)}>
+                    <tr class="contact-row" data-contact-res={contact.resource_name} onclick={() => selectContact(contact)}>
                       {#each activeColKeys as colKey}
                         {#if colKey === 'name'}
                           <td>
@@ -3543,7 +4298,7 @@
                     </td>
                   </tr>
                   {#each otherContacts as contact (contact.resource_name)}
-                    <tr class="contact-row" onclick={() => selectContact(contact)}>
+                    <tr class="contact-row" data-contact-res={contact.resource_name} onclick={() => selectContact(contact)}>
                       {#each activeColKeys as colKey}
                         {#if colKey === 'name'}
                           <td>
@@ -4963,4 +5718,7 @@
       {/if}
     </div>
   {/if}
+
+  <!-- Global Custom Desktop Context Menu -->
+  <ContextMenu />
 </div>
