@@ -47,6 +47,7 @@ export const listenPhotoExportProgress = (cb: (progress: PhotoExportProgress) =>
 
 export const api = {
   contactHistory: (accountId: string, resourceName: string) => invoke<ContactHistoryEntry[]>('contact_history', { accountId, resourceName }),
+  contactAtSnapshot: (accountId: string, sequence: number, resourceName: string) => invoke<Contact | null>('contact_at_snapshot', { accountId, sequence, resourceName }),
   accounts: () => invoke<Account[]>('list_accounts'),
   profile: (accountId: string) => invoke<AccountProfile>('account_profile', { accountId }),
   connect: (clientId: string, clientSecret: string) => invoke<Account>('connect_google', { clientId, clientSecret }),
@@ -54,6 +55,8 @@ export const api = {
   cancelCapture: (accountId: string) => invoke<boolean>('cancel_capture', { accountId }),
   importCsv: (accountId: string, path: string) => invoke<CaptureOutcome>('import_csv', { accountId, path }),
   captures: (accountId: string) => invoke<Capture[]>('list_captures', { accountId }),
+  deleteSnapshot: (accountId: string, sequence: number) => invoke<void>('delete_snapshot', { accountId, sequence }),
+  resetDatabase: () => invoke<void>('reset_database'),
   captureAt: (accountId: string, time: string) => invoke<Capture | null>('capture_at_time', { accountId, time }),
   changes: (accountId: string, sequence: number, offset: number) => invoke<Change[]>('list_changes', { accountId, sequence, offset }),
   allChanges: (accountId: string, limit?: number, offset?: number) =>

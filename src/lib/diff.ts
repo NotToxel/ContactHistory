@@ -1,4 +1,5 @@
 import { formatPhone } from './phone';
+import { formatBirthdayDate, type BirthdayFormat } from './preferences';
 
 export type DiffType = 'added' | 'removed' | 'modified';
 
@@ -67,18 +68,9 @@ export function extractDisplayName(payload: Record<string, unknown> | null | und
   return 'Unknown';
 }
 
-function formatBirthday(bday: any): string {
+function formatBirthday(bday: any, format: BirthdayFormat = 'day-month-year'): string {
   if (!bday) return '';
-  if (bday.text?.trim()) return bday.text.trim();
-  const date = bday.date;
-  if (!date) return '';
-  const parts: string[] = [];
-  if (date.day) parts.push(String(date.day));
-  if (date.month && date.month >= 1 && date.month <= 12) {
-    parts.push(MONTHS[date.month - 1]);
-  }
-  if (date.year) parts.push(String(date.year));
-  return parts.join(' ');
+  return formatBirthdayDate(bday.date, bday.text, format);
 }
 
 function formatAddress(addr: any): string {
@@ -100,7 +92,8 @@ function formatAddress(addr: any): string {
 export function computeContactDiff(
   beforeRaw: Record<string, unknown> | null,
   afterRaw: Record<string, unknown> | null,
-  labels: Map<string, string> = new Map()
+  labels: Map<string, string> = new Map(),
+  birthdayFormat: BirthdayFormat = 'day-month-year'
 ): ContactDiffResult {
   const cleanBefore = beforeRaw ? cleanPayload(beforeRaw) : null;
   const cleanAfter = afterRaw ? cleanPayload(afterRaw) : null;
@@ -111,7 +104,7 @@ export function computeContactDiff(
 
   if (!beforeRaw && afterRaw) {
     // Contact Added
-    const groups = extractAllFieldsAsGroups(cleanAfter, labels, 'added');
+    const groups = extractAllFieldsAsGroups(cleanAfter, labels, 'added', birthdayFormat);
     const badges: SummaryBadge[] = [{ label: 'New Contact', type: 'added', icon: 'person_add' }];
     return {
       displayName,
@@ -126,7 +119,7 @@ export function computeContactDiff(
 
   if (beforeRaw && !afterRaw) {
     // Contact Removed
-    const groups = extractAllFieldsAsGroups(cleanBefore, labels, 'removed');
+    const groups = extractAllFieldsAsGroups(cleanBefore, labels, 'removed', birthdayFormat);
     const badges: SummaryBadge[] = [{ label: 'Deleted Contact', type: 'removed', icon: 'person_remove' }];
     return {
       displayName,
@@ -348,8 +341,8 @@ export function computeContactDiff(
   }
 
   // 6. Birthday
-  const beforeBday = formatBirthday(((b.birthdays as Array<any>) || [])[0]);
-  const afterBday = formatBirthday(((a.birthdays as Array<any>) || [])[0]);
+  const beforeBday = formatBirthday(((b.birthdays as Array<any>) || [])[0], birthdayFormat);
+  const afterBday = formatBirthday(((a.birthdays as Array<any>) || [])[0], birthdayFormat);
   if (beforeBday !== afterBday && (beforeBday || afterBday)) {
     groups.push({
       key: 'birthdays',
@@ -495,18 +488,26 @@ export function computeContactDiff(
   const beforeCustom = (b.userDefined as Array<any>) || [];
   const afterCustom = (a.userDefined as Array<any>) || [];
   const customItems: DiffItem[] = [];
+  const unmatchedBefore = [...beforeCustom];
+  const unmatchedAfter: any[] = [];
+  // Treat repeated keys as separate entries. Consume exact key/value matches first,
+  // so a change in array order cannot appear as a changed field.
   for (const c of afterCustom) {
-    const match = beforeCustom.find((bc) => bc.key === c.key);
-    if (!match) {
+    const index = unmatchedBefore.findIndex((bc) => bc.key === c.key && bc.value === c.value);
+    if (index >= 0) unmatchedBefore.splice(index, 1);
+    else unmatchedAfter.push(c);
+  }
+  for (const c of unmatchedAfter) {
+    const index = unmatchedBefore.findIndex((bc) => bc.key === c.key);
+    if (index >= 0) {
+      const old = unmatchedBefore.splice(index, 1)[0];
+      customItems.push({ type: 'modified', label: c.key, before: old.value, after: c.value, text: c.value });
+    } else {
       customItems.push({ type: 'added', label: c.key, text: c.value });
-    } else if (match.value !== c.value) {
-      customItems.push({ type: 'modified', label: c.key, before: match.value, after: c.value, text: c.value });
     }
   }
-  for (const c of beforeCustom) {
-    if (!afterCustom.some((ac) => ac.key === c.key)) {
-      customItems.push({ type: 'removed', label: c.key, text: c.value });
-    }
+  for (const c of unmatchedBefore) {
+    customItems.push({ type: 'removed', label: c.key, text: c.value });
   }
   if (customItems.length > 0) {
     groups.push({
@@ -563,7 +564,8 @@ export function computeContactDiff(
 function extractAllFieldsAsGroups(
   payload: Record<string, unknown> | null,
   labels: Map<string, string>,
-  type: 'added' | 'removed'
+  type: 'added' | 'removed',
+  birthdayFormat: BirthdayFormat = 'day-month-year'
 ): FieldDiffGroup[] {
   if (!payload) return [];
   const groups: FieldDiffGroup[] = [];
@@ -639,7 +641,7 @@ function extractAllFieldsAsGroups(
 
   // Birthday
   const bdays = (payload.birthdays as Array<any>) || [];
-  const bdayStr = formatBirthday(bdays[0]);
+  const bdayStr = formatBirthday(bdays[0], birthdayFormat);
   if (bdayStr) {
     groups.push({
       key: 'birthdays',

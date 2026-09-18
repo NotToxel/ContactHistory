@@ -708,6 +708,25 @@ pub fn contact_history(store: &Store, account: &Account, resource: &str) -> Resu
     Ok(history)
 }
 
+pub fn contact_at_snapshot(store: &Store, account: &Account, sequence: i64, resource: &str) -> Result<Option<ContactRow>> {
+    if sequence < 1 { bail!("invalid capture sequence"); }
+    let db = store.open_db(&account.id)?;
+    store.verify(account, &db)?;
+    let row: Option<(String, i64)> = db.query_row(
+        "SELECT o.payload,r.version FROM capture_contacts c \
+         JOIN contact_identities i ON i.id=c.contact_id \
+         JOIN contact_revisions r ON r.id=c.revision_id \
+         JOIN captures p ON p.sequence=c.capture_sequence \
+         JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
+         WHERE c.capture_sequence=?1 AND i.resource_name=?2 AND r.kind='present'",
+        params![sequence, resource], |r| Ok((r.get(0)?, r.get(1)?))
+    ).optional()?;
+    row.map(|(payload, version)| {
+        let payload: Value = serde_json::from_str(&payload)?;
+        Ok(ContactRow { resource_name: resource.into(), display_name: name(&payload), payload, version })
+    }).transpose()
+}
+
 #[derive(Clone, serde::Serialize)]
 pub struct ChangelogEntry {
     pub capture_sequence: i64,

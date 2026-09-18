@@ -5,6 +5,7 @@
   import { readPreferences, savePreferences, applyPreferences, getEffectiveCountry, type Preferences } from './lib/preferences';
   import ToggleSwitch from './lib/ToggleSwitch.svelte';
   import CustomSelect, { type SelectOption } from './lib/CustomSelect.svelte';
+  import SnapshotSelect from './lib/SnapshotSelect.svelte';
   import { getCountryOptions, formatPhone } from './lib/phone';
   import { getContactPhotos, type ContactPhotoItem } from './lib/photos';
 
@@ -203,10 +204,17 @@
   let copiedFieldKey = $state<string | null>(null);
   let copiedTimeout: any = null;
   let contactHistory = $state<ContactHistoryEntry[]>([]);
+  let originalDetail: Contact | undefined = $state(undefined);
+  let previewSequence: number | null = $state(null);
+  let previewBusy = $state(false);
+  let previewRequest = 0;
   let loadingHistory = $state(false);
   let expandedHistoryVersions = $state<Set<number>>(new Set());
   let captureProgress = $state<CaptureProgress | null>(null);
   let toastMessage = $state('');
+  let deleteSnapshotTarget = $state<Capture | null>(null);
+  let showResetDatabaseConfirm = $state(false);
+  let archiveActionBusy = $state(false);
 
   // Column Configuration & Resizing State
   let activeColKeys = $state<ColumnKey[]>(['name', 'email', 'phone', 'birthday', 'labels']);
@@ -1255,7 +1263,7 @@
     }
     compareTargetSeq = capture.sequence;
     const prior = captures.find((c) => c.sequence < capture!.sequence);
-    compareBaseSeq = prior ? prior.sequence : Math.max(1, capture.sequence - 1);
+    compareBaseSeq = prior ? prior.sequence : capture.sequence;
 
     try {
       if (compareBaseSeq === compareTargetSeq) {
@@ -1315,7 +1323,7 @@
   function compareSnapshotWithPrior(seq: number) {
     compareTargetSeq = seq;
     const prior = captures.find((c) => c.sequence < seq);
-    compareBaseSeq = prior ? prior.sequence : Math.max(1, seq - 1);
+    compareBaseSeq = prior ? prior.sequence : seq;
     changesTab = 'comparison';
     refreshChangesComparison();
   }
@@ -1414,6 +1422,10 @@
   });
 
   async function selectContact(contact: Contact) {
+    const request = ++previewRequest;
+    originalDetail = contact;
+    previewSequence = null;
+    previewBusy = false;
     detail = contact;
     showStickyName = false;
     showDetailMenu = false;
@@ -1427,18 +1439,19 @@
     if (selected) {
       loadingHistory = true;
       try {
-        contactHistory = await api.contactHistory(selected.id, contact.resource_name);
+        const history = await api.contactHistory(selected.id, contact.resource_name);
+        if (request === previewRequest) contactHistory = history;
       } catch (e) {
-        contactHistory = [];
+        if (request === previewRequest) contactHistory = [];
       } finally {
-        loadingHistory = false;
+        if (request === previewRequest) loadingHistory = false;
       }
 
       if (capture) {
         try {
           const loadedMedia = await api.media(selected.id, capture.sequence, contact.resource_name);
           mediaCache.set(contact.resource_name, loadedMedia);
-          if (detail?.resource_name === contact.resource_name) {
+          if (request === previewRequest && detail?.resource_name === contact.resource_name) {
             media = loadedMedia;
           }
         } catch (e) {
@@ -1496,6 +1509,70 @@
     await refreshGroups();
     await refreshContacts();
     await refreshChanges();
+  }
+
+  async function previewContactRevision(entry: ContactHistoryEntry) {
+    if (!selected || !originalDetail || !entry.after || previewBusy) return;
+    const request = ++previewRequest;
+    const resourceName = originalDetail.resource_name;
+    previewBusy = true;
+    try {
+      const contact = await api.contactAtSnapshot(selected.id, entry.sequence, resourceName);
+      if (request !== previewRequest || !contact) return;
+      const previewMedia = await api.media(selected.id, entry.sequence, resourceName).catch(() => []);
+      if (request !== previewRequest) return;
+      if (detail?.resource_name !== resourceName || pageView !== 'contacts') return;
+      detail = contact;
+      media = previewMedia;
+      previewSequence = entry.sequence;
+      selectedPhotoUrl = null;
+      detailViewEl?.scrollTo({ top: 0 });
+    } catch (e) {
+      if (request === previewRequest) toastMessage = `Could not preview revision: ${String(e)}`;
+    } finally {
+      if (request === previewRequest) previewBusy = false;
+    }
+  }
+
+  function restoreContactRevision() {
+    if (!originalDetail) return;
+    previewRequest++;
+    detail = originalDetail;
+    previewSequence = null;
+    previewBusy = false;
+    selectedPhotoUrl = null;
+    media = mediaCache.get(originalDetail.resource_name) || [];
+  }
+
+  async function deleteSelectedSnapshot() {
+    if (!selected || !deleteSnapshotTarget || archiveActionBusy) return;
+    const sequence = deleteSnapshotTarget.sequence;
+    archiveActionBusy = true;
+    error = '';
+    try {
+      await api.deleteSnapshot(selected.id, sequence);
+      deleteSnapshotTarget = null;
+      showSnapshotDropdown = false;
+      mediaCache.clear();
+      await selectAccount(selected);
+      toastMessage = `Snapshot #${sequence} deleted.`;
+    } catch (e) { error = String(e); }
+    finally { archiveActionBusy = false; }
+  }
+
+  async function resetAllDatabase() {
+    if (archiveActionBusy) return;
+    archiveActionBusy = true;
+    settingsError = '';
+    try {
+      await api.resetDatabase();
+      showResetDatabaseConfirm = false;
+      showSettingsModal = false;
+      mediaCache.clear();
+      if (selected) await selectAccount(selected);
+      toastMessage = 'Local database reset. Your connected accounts are ready for a new capture.';
+    } catch (e) { settingsError = String(e); }
+    finally { archiveActionBusy = false; }
   }
 
   // Capture & Cancel Action
@@ -2524,6 +2601,11 @@
             showSnapshotDropdown = false;
           },
         });
+        items.push({ id: 'snapshot-delete', label: `Delete Snapshot #${seq}`, icon: 'delete', disabled: busy || archiveActionBusy, action: () => {
+          error = '';
+          deleteSnapshotTarget = captures.find((item) => item.sequence === seq) ?? null;
+          showSnapshotDropdown = false;
+        } });
 
         openContextMenu({ x: e.clientX, y: e.clientY, items, header, subHeader });
         return;
@@ -2948,7 +3030,7 @@
             class:active={showSnapshotDropdown}
             onclick={() => { showSnapshotDropdown = !showSnapshotDropdown; showAccountMenu = false; }}
             data-tooltip="Snapshot timeline"
-            aria-haspopup="listbox"
+            aria-haspopup="true"
             aria-expanded={showSnapshotDropdown}
           >
             <span class="material-symbols-outlined">history</span>
@@ -2967,21 +3049,21 @@
               onclick={() => showSnapshotDropdown = false}
               role="presentation"
             ></div>
-            <div class="popover snapshot-popover" role="listbox" aria-label="Archive snapshots">
+            <div class="popover snapshot-popover" role="group" aria-label="Archive snapshots">
               <div class="popover-heading">
                 <span>Archive snapshots</span>
                 <span class="popover-count-tag">{captures.length} total</span>
               </div>
               <div class="snapshot-popover-list">
                 {#each captures as cap}
+                  <div class="snapshot-popover-row">
                   <button
                     type="button"
                     class="snapshot-popover-item"
                     class:selected={capture?.sequence === cap.sequence}
                     data-snapshot-seq={cap.sequence}
                     onclick={() => { changeCapture(cap.sequence); showSnapshotDropdown = false; }}
-                    role="option"
-                    aria-selected={capture?.sequence === cap.sequence}
+                    aria-pressed={capture?.sequence === cap.sequence}
                   >
                     <div class="snapshot-item-left">
                       <div class="snapshot-item-title">Snapshot #{cap.sequence}</div>
@@ -2994,6 +3076,8 @@
                       {/if}
                     </div>
                   </button>
+                  <button class="snapshot-delete-btn" aria-label={`Delete Snapshot #${cap.sequence}`} title={`Delete Snapshot #${cap.sequence}`} disabled={busy || archiveActionBusy} onclick={() => { error = ''; deleteSnapshotTarget = cap; showSnapshotDropdown = false; }}><span class="material-symbols-outlined">delete</span></button>
+                  </div>
                 {/each}
               </div>
             </div>
@@ -3032,13 +3116,17 @@
       <!-- Windows Controls -->
       <div class="window-controls">
         <button class="win-btn" onclick={winMinimize} data-tooltip="Minimize" aria-label="Minimize">
-          <span class="material-symbols-outlined">minimize</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10" /></svg>
         </button>
         <button class="win-btn" onclick={winToggleMaximize} data-tooltip={isMaximized ? 'Restore' : 'Maximize'} aria-label={isMaximized ? 'Restore' : 'Maximize'}>
-          <span class="material-symbols-outlined">{isMaximized ? 'filter_none' : 'crop_square'}</span>
+          {#if isMaximized}
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3h8v8h-2M3 5h8v8H3z" /></svg>
+          {:else}
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h10v10H3z" /></svg>
+          {/if}
         </button>
         <button class="win-btn win-close" onclick={winClose} data-tooltip="Close" aria-label="Close">
-          <span class="material-symbols-outlined">close</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9m0-9l-9 9" /></svg>
         </button>
       </div>
     </div>
@@ -3310,70 +3398,74 @@
             bind:this={detailViewEl}
             onscroll={updateStickyState}
           >
-            <!-- ── Top Pinned Navigation Bar (only nav bar is sticky) ─────────── -->
+            <!-- ── Top Navigation Row (transforms into a persistent tab when scrolled) ── -->
             <div
-              class="detail-top-nav-wrapper"
+              class="detail-top-nav"
               class:is-scrolled={showStickyName}
               bind:this={topNavEl}
             >
-              <div class="detail-top-nav">
-                <div class="detail-top-nav-left">
-                  <button class="icon-btn" onclick={() => detail = undefined} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
-                    <span class="material-symbols-outlined">arrow_back</span>
-                  </button>
-                  <span class="detail-sticky-name" class:visible={showStickyName} title={getDisplayName(detail)}>
-                    {getDisplayName(detail)}
+              <div class="detail-top-nav-left">
+                <button class="icon-btn" onclick={() => detail = undefined} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
+                  <span class="material-symbols-outlined">arrow_back</span>
+                </button>
+                <span class="detail-sticky-name" class:visible={showStickyName} title={getDisplayName(detail)}>
+                  {getDisplayName(detail)}
+                </span>
+              </div>
+              <div class="detail-nav-actions">
+                {#if isFavourite(detail)}
+                  <span class="star-indicator" data-tooltip="Starred contact" data-tooltip-pos="bottom">
+                    <span class="material-symbols-outlined icon-filled" style="color: var(--favorite); font-size: 22px;">star</span>
                   </span>
+                {/if}
+                {#if previewSequence !== null}
+                  <button class="detail-preview-reset" onclick={restoreContactRevision} title="Return to selected snapshot">
+                    <span class="material-symbols-outlined">undo</span>
+                    <span>Previewing snapshot #{previewSequence} · Back to selected</span>
+                  </button>
+                {/if}
+                <div class="detail-version-pill" data-tooltip="Contact revision #{detail.version}" data-tooltip-pos="bottom">
+                  <span class="material-symbols-outlined" style="font-size: 15px;">history</span>
+                  <span>v{detail.version}</span>
                 </div>
-                <div class="detail-nav-actions">
-                  {#if isFavourite(detail)}
-                    <span class="star-indicator" data-tooltip="Starred contact" data-tooltip-pos="bottom">
-                      <span class="material-symbols-outlined icon-filled" style="color: var(--favorite); font-size: 22px;">star</span>
-                    </span>
+                <!-- Three-dots More Options Menu -->
+                <div class="detail-menu-container">
+                  <button
+                    class="icon-btn"
+                    onclick={() => (showDetailMenu = !showDetailMenu)}
+                    aria-label="More options"
+                    aria-haspopup="true"
+                    aria-expanded={showDetailMenu}
+                    data-tooltip="More options"
+                    data-tooltip-pos="bottom"
+                  >
+                    <span class="material-symbols-outlined">more_vert</span>
+                  </button>
+                  {#if showDetailMenu}
+                    <div class="detail-menu" role="menu">
+                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; showRawDataModal = true; }}>
+                        <span class="material-symbols-outlined">data_object</span>
+                        <span>View raw payload</span>
+                      </button>
+                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactCsv(detail!); }}>
+                        <span class="material-symbols-outlined">table_chart</span>
+                        <span>Export Google CSV</span>
+                      </button>
+                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactVcf(detail!); }}>
+                        <span class="material-symbols-outlined">contact_page</span>
+                        <span>Export vCard</span>
+                      </button>
+                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactJson(detail!); }}>
+                        <span class="material-symbols-outlined">download</span>
+                        <span>Export JSON</span>
+                      </button>
+                      <div class="detail-menu-divider"></div>
+                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; window.print(); }}>
+                        <span class="material-symbols-outlined">print</span>
+                        <span>Print</span>
+                      </button>
+                    </div>
                   {/if}
-                  <div class="detail-version-pill" data-tooltip="Snapshot version #{detail.version}" data-tooltip-pos="bottom">
-                    <span class="material-symbols-outlined" style="font-size: 15px;">history</span>
-                    <span>v{detail.version}</span>
-                  </div>
-                  <!-- Three-dots More Options Menu -->
-                  <div class="detail-menu-container">
-                    <button
-                      class="icon-btn"
-                      onclick={() => (showDetailMenu = !showDetailMenu)}
-                      aria-label="More options"
-                      aria-haspopup="true"
-                      aria-expanded={showDetailMenu}
-                      data-tooltip="More options"
-                      data-tooltip-pos="bottom"
-                    >
-                      <span class="material-symbols-outlined">more_vert</span>
-                    </button>
-                    {#if showDetailMenu}
-                      <div class="detail-menu" role="menu">
-                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; showRawDataModal = true; }}>
-                          <span class="material-symbols-outlined">data_object</span>
-                          <span>View raw payload</span>
-                        </button>
-                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactCsv(detail!); }}>
-                          <span class="material-symbols-outlined">table_chart</span>
-                          <span>Export Google CSV</span>
-                        </button>
-                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactVcf(detail!); }}>
-                          <span class="material-symbols-outlined">contact_page</span>
-                          <span>Export vCard</span>
-                        </button>
-                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactJson(detail!); }}>
-                          <span class="material-symbols-outlined">download</span>
-                          <span>Export JSON</span>
-                        </button>
-                        <div class="detail-menu-divider"></div>
-                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; window.print(); }}>
-                          <span class="material-symbols-outlined">print</span>
-                          <span>Print</span>
-                        </button>
-                      </div>
-                    {/if}
-                  </div>
                 </div>
               </div>
             </div>
@@ -3407,6 +3499,10 @@
                   <h1 class="hero-name">{getDisplayName(detail)}</h1>
                   {#if getNickname(detail.payload)}
                     <span class="hero-nickname">{getNickname(detail.payload)}</span>
+                  {/if}
+                  {#if getOrganization(detail.payload).title || getOrganization(detail.payload).org}
+                    {@const organization = getOrganization(detail.payload)}
+                    <span class="hero-job-info">{[organization.title, organization.org].filter(Boolean).join(' at ')}</span>
                   {/if}
                 </div>
               </div>
@@ -3606,6 +3702,33 @@
                       </div>
                     {/if}
 
+                    {#if getNickname(detail.payload)}
+                      <div class="field-item">
+                        <span class="material-symbols-outlined field-icon">person</span>
+                        <div class="field-content">
+                          <span class="field-value text-plain">{getNickname(detail.payload)}</span>
+                          <span class="field-meta">• Nickname</span>
+                          <div class="field-actions">
+                            <button
+                              class="field-copy-btn"
+                              data-tooltip="Copy nickname"
+                              data-tooltip-pos="top"
+                              aria-label="Copy nickname"
+                              onclick={() => copyFieldValue('nickname', getNickname(detail!.payload))}
+                            >
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            {#if copiedFieldKey === 'nickname'}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
+                          </div>
+                        </div>
+                      </div>
+                    {/if}
+
                     {#if getOrganization(detail.payload).org || getOrganization(detail.payload).title}
                       {@const orgInfo = [getOrganization(detail.payload).title, getOrganization(detail.payload).org].filter(Boolean).join(' at ')}
                       <div class="field-item">
@@ -3641,48 +3764,55 @@
                         {:else}
                           <span class="field-icon-spacer" style="align-self: flex-start;"></span>
                         {/if}
-                        <div class="field-content field-content--column" data-context="address" data-address-value={addr.copyValue}>
-                          <!-- Entire address block is a clickable link to Google Maps -->
-                          <a
-                            class="field-address-lines field-address-link"
-                            href={getAddressMapsUrl(addr)}
-                            data-context="address"
-                            data-address-value={addr.copyValue}
-                            onclick={(e) => { e.preventDefault(); api.openExternalUrl(getAddressMapsUrl(addr)); }}
-                            aria-label="Open {addr.copyValue} in Google Maps"
-                          >
-                            {#each addr.lines as line}
-                              <span class="field-value field-address-line">{line}</span>
-                            {/each}
-                          </a>
-                          <div class="field-address-bottom-row">
-                            <span class="field-meta">• {addr.type}</span>
-                            <div class="field-actions">
-                              <button
-                                class="field-copy-btn"
-                                data-tooltip="Copy address"
-                                data-tooltip-pos="top"
-                                aria-label="Copy address"
-                                onclick={() => copyFieldValue(`address-${idx}`, addr.copyValue)}
+                        <div class="field-content field-content--address" data-context="address" data-address-value={addr.copyValue}>
+                          <div class="field-address-text">
+                            {#if addr.lines.length > 1}
+                              <a
+                                class="field-address-lines field-address-link"
+                                href={getAddressMapsUrl(addr)}
+                                onclick={(e) => { e.preventDefault(); api.openExternalUrl(getAddressMapsUrl(addr)); }}
+                                tabindex="-1"
                               >
-                                <span class="material-symbols-outlined">content_copy</span>
-                              </button>
-                              <button
-                                class="field-copy-btn"
-                                data-tooltip="Open in Google Maps"
-                                data-tooltip-pos="top"
-                                aria-label="Open in Google Maps"
-                                onclick={() => api.openExternalUrl(getAddressMapsUrl(addr))}
-                              >
-                                <span class="material-symbols-outlined">open_in_new</span>
-                              </button>
-                              {#if copiedFieldKey === `address-${idx}`}
-                                <div class="copy-popup-badge">
-                                  <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
-                                  <span>Copied!</span>
-                                </div>
-                              {/if}
+                                {#each addr.lines.slice(0, -1) as line}
+                                  <span class="field-value field-address-line">{line}</span>
+                                {/each}
+                              </a>
+                            {/if}
+                            <div class="field-address-last-line">
+                              <a
+                                class="field-address-link"
+                                href={getAddressMapsUrl(addr)}
+                                onclick={(e) => { e.preventDefault(); api.openExternalUrl(getAddressMapsUrl(addr)); }}
+                                aria-label="Open {addr.copyValue} in Google Maps"
+                              ><span class="field-value field-address-line">{addr.lines[addr.lines.length - 1]}</span></a>
+                              <span class="field-meta" title={addr.type}>• {addr.type}</span>
                             </div>
+                          </div>
+                          <div class="field-actions field-address-actions">
+                            <button
+                              class="field-copy-btn"
+                              data-tooltip="Copy address"
+                              data-tooltip-pos="top"
+                              aria-label="Copy address"
+                              onclick={() => copyFieldValue(`address-${idx}`, addr.copyValue)}
+                            >
+                              <span class="material-symbols-outlined">content_copy</span>
+                            </button>
+                            <button
+                              class="field-copy-btn"
+                              data-tooltip="Open in Google Maps"
+                              data-tooltip-pos="top"
+                              aria-label="Open in Google Maps"
+                              onclick={() => api.openExternalUrl(getAddressMapsUrl(addr))}
+                            >
+                              <span class="material-symbols-outlined">open_in_new</span>
+                            </button>
+                            {#if copiedFieldKey === `address-${idx}`}
+                              <div class="copy-popup-badge">
+                                <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                                <span>Copied!</span>
+                              </div>
+                            {/if}
                           </div>
                         </div>
                       </div>
@@ -3840,16 +3970,16 @@
                     <div class="snapshot-info-row">
                       <span class="snapshot-info-label">
                         <span class="material-symbols-outlined" style="font-size: 16px;">photo_library</span>
-                        <span>Current Snapshot</span>
+                        <span>{previewSequence === null ? 'Selected Snapshot' : 'Preview Snapshot'}</span>
                       </span>
-                      <span class="snapshot-info-value">Snapshot #{capture?.sequence}</span>
+                      <span class="snapshot-info-value">Snapshot #{previewSequence ?? capture?.sequence}</span>
                     </div>
                     <div class="snapshot-info-row">
                       <span class="snapshot-info-label">
                         <span class="material-symbols-outlined" style="font-size: 16px;">calendar_today</span>
                         <span>Captured Date</span>
                       </span>
-                      <span class="snapshot-info-value">{formatCaptureTime(capture?.committed_at)}</span>
+                      <span class="snapshot-info-value">{formatCaptureTime(previewSequence === null ? capture?.committed_at : contactHistory.find((entry) => entry.sequence === previewSequence)?.committed_at)}</span>
                     </div>
                     <div class="snapshot-info-row">
                       <span class="snapshot-info-label">
@@ -3919,7 +4049,7 @@
                 {:else}
                   <div class="history-log-timeline">
                     {#each contactHistory as entry, idx (entry.version)}
-                      {@const isCurrent = idx === 0}
+                      {@const isCurrent = entry.version === detail.version}
                       {@const diff = computeContactDiff(entry.before, entry.after, groupMap)}
                       {@const isExpanded = expandedHistoryVersions.has(entry.version)}
                       <div class="history-entry-card" class:is-current={isCurrent}>
@@ -3927,12 +4057,19 @@
                           <div class="history-entry-meta">
                             <span class="history-version-badge">Version #{entry.version}</span>
                             {#if isCurrent}
-                              <span class="history-tag modified">Current</span>
+                              <span class="history-tag modified">Viewing</span>
                             {/if}
                             <span class="history-entry-snapshot">Snapshot #{entry.sequence}</span>
                           </div>
                           <span class="history-entry-date">{formatCaptureTime(entry.committed_at)}</span>
                         </div>
+
+                        {#if entry.after !== null && (entry.version !== detail.version || previewSequence !== entry.sequence)}
+                          <button type="button" class="history-preview-btn" disabled={previewBusy} onclick={() => previewContactRevision(entry)}>
+                            <span class="material-symbols-outlined">visibility</span>
+                            <span>Preview contact at this revision</span>
+                          </button>
+                        {/if}
 
                         <div class="history-entry-badges">
                           {#if entry.before === null}
@@ -4464,20 +4601,7 @@
             <!-- TAB 1: SNAPSHOT COMPARISON -->
             {#if captures.length > 1}
               <div class="comparison-bar">
-                <div class="compare-group">
-                  <span class="compare-label">Base Snapshot:</span>
-                  <select
-                    class="compare-select"
-                    bind:value={compareBaseSeq}
-                    onchange={refreshChangesComparison}
-                  >
-                    {#each captures as cap}
-                      <option value={cap.sequence}>
-                        Snapshot #{cap.sequence} ({formatCaptureTime(cap.committed_at)})
-                      </option>
-                    {/each}
-                  </select>
-                </div>
+                <SnapshotSelect label="Base snapshot" {captures} value={compareBaseSeq} onchange={(value) => { compareBaseSeq = value; refreshChangesComparison(); }} />
 
                 <button
                   type="button"
@@ -4489,22 +4613,9 @@
                   <span class="material-symbols-outlined">swap_horiz</span>
                 </button>
 
-                <div class="compare-group">
-                  <span class="compare-label">Compare With:</span>
-                  <select
-                    class="compare-select"
-                    bind:value={compareTargetSeq}
-                    onchange={refreshChangesComparison}
-                  >
-                    {#each captures as cap}
-                      <option value={cap.sequence}>
-                        Snapshot #{cap.sequence} ({formatCaptureTime(cap.committed_at)})
-                      </option>
-                    {/each}
-                  </select>
-                </div>
+                <SnapshotSelect label="Compare with" {captures} value={compareTargetSeq} onchange={(value) => { compareTargetSeq = value; refreshChangesComparison(); }} />
 
-                <div style="display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap;">
+                <div class="compare-presets" role="group" aria-label="Comparison shortcuts">
                   <button
                     type="button"
                     class="compare-quick-btn"
@@ -4513,7 +4624,7 @@
                         const curSeq = capture.sequence;
                         compareTargetSeq = curSeq;
                         const prior = captures.find((c) => c.sequence < curSeq);
-                        compareBaseSeq = prior ? prior.sequence : 1;
+                        compareBaseSeq = prior ? prior.sequence : curSeq;
                         refreshChangesComparison();
                       }
                     }}
@@ -5323,6 +5434,20 @@
               </div>
             </div>
 
+            <div class="settings-section-header">
+              <h3><span class="material-symbols-outlined">database</span> Local database</h3>
+              <p>Manage the archived contact data stored on this computer.</p>
+            </div>
+            <div class="settings-card">
+              <div class="setting-row">
+                <div class="setting-row-text">
+                  <span class="setting-row-title">Clear and reset database</span>
+                  <span class="setting-row-desc">Permanently delete every snapshot, contact history entry, and saved photo for all accounts. Connected accounts and preferences stay available.</span>
+                </div>
+                <div class="setting-row-control"><button class="btn-secondary danger-action" disabled={archiveActionBusy || busy || accounts.length === 0} onclick={() => showResetDatabaseConfirm = true}>Reset database</button></div>
+              </div>
+            </div>
+
           {:else if settingsTab === 'schedule'}
             <!-- Capture Schedule Tab -->
             <div class="settings-section-header">
@@ -5447,6 +5572,28 @@
           {/if}
           <button class="btn-primary" onclick={() => showSettingsModal = false}>Done</button>
         </div>
+      </div>
+    </div>
+  {/if}
+  {#if deleteSnapshotTarget}
+    <div class="modal-overlay archive-confirm-overlay" use:focusDialog role="dialog" aria-modal="true" aria-labelledby="delete-snapshot-title" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape' && !archiveActionBusy) deleteSnapshotTarget = null; }}>
+      <div class="modal-dialog archive-confirm-dialog" role="document">
+        <div class="modal-header"><h2 class="modal-title" id="delete-snapshot-title">Delete Snapshot #{deleteSnapshotTarget.sequence}?</h2></div>
+        <div class="modal-body">
+          <p>Captured {formatCaptureTime(deleteSnapshotTarget.committed_at)} with {deleteSnapshotTarget.contact_count} contacts.</p>
+          <p>This permanently removes the snapshot and its unique history from this computer. Remaining snapshots stay available. This cannot be undone.</p>
+          {#if error}<p class="settings-error" role="alert">{error}</p>{/if}
+        </div>
+        <div class="modal-footer archive-confirm-actions"><button class="btn-secondary" disabled={archiveActionBusy} onclick={() => deleteSnapshotTarget = null}>Cancel</button><button class="btn-primary danger-button" disabled={archiveActionBusy} onclick={deleteSelectedSnapshot}>{archiveActionBusy ? 'Deleting...' : 'Delete snapshot'}</button></div>
+      </div>
+    </div>
+  {/if}
+  {#if showResetDatabaseConfirm}
+    <div class="modal-overlay archive-confirm-overlay" use:focusDialog role="dialog" aria-modal="true" aria-labelledby="reset-database-title" tabindex="-1" onkeydown={(e) => { if (e.key === 'Escape' && !archiveActionBusy) showResetDatabaseConfirm = false; }}>
+      <div class="modal-dialog archive-confirm-dialog" role="document">
+        <div class="modal-header"><h2 class="modal-title" id="reset-database-title">Reset the entire database?</h2></div>
+        <div class="modal-body"><p>All snapshots, contact history, and stored photos for {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'} will be permanently deleted. Connected accounts and preferences will remain. This cannot be undone.</p><p>Back up any archives you want to keep before continuing.</p>{#if settingsError}<p class="settings-error" role="alert">{settingsError}</p>{/if}</div>
+        <div class="modal-footer archive-confirm-actions"><button class="btn-secondary" disabled={archiveActionBusy} onclick={() => showResetDatabaseConfirm = false}>Cancel</button><button class="btn-primary danger-button" disabled={archiveActionBusy} onclick={resetAllDatabase}>{archiveActionBusy ? 'Resetting...' : 'Reset database'}</button></div>
       </div>
     </div>
   {/if}

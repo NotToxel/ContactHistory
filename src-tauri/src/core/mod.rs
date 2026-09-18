@@ -1,4 +1,5 @@
 pub mod backup;
+pub mod archive_management;
 pub mod capture;
 pub mod export;
 pub mod google;

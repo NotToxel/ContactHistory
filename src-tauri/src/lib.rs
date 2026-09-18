@@ -80,6 +80,21 @@ fn list_captures(account_id: String) -> Result<Vec<capture::Capture>, String> {
     error(capture::captures(&store, &account))
 }
 #[tauri::command]
+async fn delete_snapshot(account_id: String, sequence: i64) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(core::archive_management::delete_snapshot(&store, &account, sequence))
+    }).await.map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn reset_database() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = store()?;
+        error(core::archive_management::reset_database(&store))
+    }).await.map_err(|e| e.to_string())?
+}
+#[tauri::command]
 fn capture_at_time(account_id: String, time: String) -> Result<Option<capture::Capture>, String> {
     let store = store()?;
     let account = error(store.account(&account_id))?;
@@ -157,6 +172,13 @@ fn contact_history(account_id: String, resource_name: String) -> Result<Vec<capt
     let store = store()?;
     let account = error(store.account(&account_id))?;
     error(capture::contact_history(&store, &account, &resource_name))
+}
+
+#[tauri::command]
+fn contact_at_snapshot(account_id: String, sequence: i64, resource_name: String) -> Result<Option<capture::ContactRow>, String> {
+    let store = store()?;
+    let account = error(store.account(&account_id))?;
+    error(capture::contact_at_snapshot(&store, &account, sequence, &resource_name))
 }
 
 #[tauri::command]
@@ -401,6 +423,8 @@ pub fn run() {
             capture_now,
             cancel_capture,
             list_captures,
+            delete_snapshot,
+            reset_database,
             capture_at_time,
             list_changes,
             list_all_changes,
@@ -409,6 +433,7 @@ pub fn run() {
             list_contacts,
             list_avatars,
             contact_history,
+            contact_at_snapshot,
             account_profile,
             account_health,
             disconnect_account,

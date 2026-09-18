@@ -109,3 +109,28 @@ test('computeContactDiff detects phone additions and updates', () => {
   assert.equal(phoneGroup.items.length, 1);
   assert.equal(phoneGroup.items[0].type, 'added');
 });
+
+test('custom fields with duplicate keys are unchanged when reordered', () => {
+  const before = { userDefined: [{ key: 'Reference', value: 'one' }, { key: 'Reference', value: 'two' }] };
+  const after = { userDefined: [{ key: 'Reference', value: 'two' }, { key: 'Reference', value: 'one' }] };
+  const diff = computeContactDiff(before, after);
+  assert.equal(diff.hasChanges, false);
+  assert.equal(diff.groups.find((group) => group.key === 'userDefined'), undefined);
+});
+
+test('custom fields with duplicate keys preserve counts and report only actual changes', () => {
+  const before = { userDefined: [{ key: 'Reference', value: 'one' }, { key: 'Reference', value: 'one' }] };
+  const after = { userDefined: [{ key: 'Reference', value: 'one' }, { key: 'Reference', value: 'two' }] };
+  const diff = computeContactDiff(before, after);
+  const group = diff.groups.find((item) => item.key === 'userDefined');
+  assert.deepEqual(group?.items, [
+    { type: 'modified', label: 'Reference', before: 'one', after: 'two', text: 'two' },
+  ]);
+});
+
+test('custom fields with duplicate keys report a removed occurrence', () => {
+  const before = { userDefined: [{ key: 'Reference', value: 'one' }, { key: 'Reference', value: 'one' }] };
+  const after = { userDefined: [{ key: 'Reference', value: 'one' }] };
+  const group = computeContactDiff(before, after).groups.find((item) => item.key === 'userDefined');
+  assert.deepEqual(group?.items, [{ type: 'removed', label: 'Reference', text: 'one' }]);
+});
