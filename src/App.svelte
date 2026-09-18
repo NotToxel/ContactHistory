@@ -9,7 +9,7 @@
   import { getContactPhotos, type ContactPhotoItem } from './lib/photos';
 
   let preferences = $state(readPreferences());
-  let preferenceNotice = $state('Changes save automatically');
+  let preferenceNotice = $state('');
   let settingsTab = $state<'preferences' | 'schedule' | 'about'>('preferences');
   let scheduleBusy = $state(false);
   let scheduleReady = $state(false);
@@ -53,7 +53,7 @@
   function syncSystemTheme() { applyPreferences(preferences); }
   function updatePreferences(patch: Partial<Preferences>) {
     preferences = { ...preferences, ...patch };
-    preferenceNotice = savePreferences(preferences) ? 'Changes saved' : 'Applied for this session; storage is unavailable';
+    preferenceNotice = savePreferences(preferences) ? '' : 'Applied for this session; storage is unavailable';
   }
   // Keep keyboard focus inside open dialogs and restore it to their trigger.
   function focusDialog(node: HTMLElement) {
@@ -77,6 +77,7 @@
   import FieldChanges from './lib/FieldChanges.svelte';
   import ContactPayloadViewer from './lib/ContactPayloadViewer.svelte';
   import { computeContactDiff, extractDisplayName } from './lib/diff';
+  import { generateContactCsv } from './lib/export-csv';
   import {
     api,
     listenCaptureProgress,
@@ -138,7 +139,8 @@
   let captures: Capture[] = $state([]);
   let capture: Capture | undefined = $state();
   let groups: GroupRow[] = $state([]);
-  let selectedGroup: string | null = $state(null);
+  let selectedGroups: string[] = $state([]);
+  let labelMatchMode: 'any' | 'all' = $state('any');
   let allSnapshotContacts: Contact[] = $state([]);
   let avatarMap: Record<string, string> = $state({});
   let mediaCache = new Map<string, MediaView[]>();
@@ -171,6 +173,10 @@
   let showSettingsModal = $state(false);
   let showRawDataModal = $state(false);
   let showDetailMenu = $state(false);
+  let showStickyName = $state(false);
+  let detailViewEl = $state<HTMLElement | null>(null);
+  let topNavEl = $state<HTMLElement | null>(null);
+  let heroAvatarEl = $state<HTMLElement | null>(null);
   let showPhotosModal = $state(false);
   let photoInfoTooltip: { text: string; x: number; y: number } | null = $state(null);
   let selectedPhotoUrl: string | null = $state(null);
@@ -233,9 +239,12 @@
     return map;
   });
 
+  const activeGroups = $derived.by(() => {
+    return groups.filter((g) => selectedGroups.includes(g.resource_name));
+  });
+
   const activeGroup = $derived.by(() => {
-    if (!selectedGroup) return null;
-    return groups.find((g) => g.resource_name === selectedGroup) ?? null;
+    return activeGroups[0] ?? null;
   });
 
   const hiddenCols = $derived.by(() => {
@@ -580,6 +589,21 @@
     a.click();
     URL.revokeObjectURL(url);
     toastMessage = `Downloaded vCard for ${name}.`;
+    setTimeout(() => { toastMessage = ''; }, 4000);
+  }
+
+  function downloadContactCsv(c: Contact) {
+    const name = getDisplayName(c);
+    const csvStr = generateContactCsv(c, groupMap);
+    const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    a.download = `contact-${safeName}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toastMessage = `Downloaded Google CSV for ${name}.`;
     setTimeout(() => { toastMessage = ''; }, 4000);
   }
 
@@ -1170,6 +1194,21 @@
     if (!target.closest('.account-avatar-btn') && !target.closest('.account-menu')) {
       showAccountMenu = false;
     }
+    if (!target.closest('.detail-menu-container')) {
+      showDetailMenu = false;
+    }
+  }
+
+  function updateStickyState() {
+    if (!heroAvatarEl || !topNavEl) {
+      showStickyName = false;
+      return;
+    }
+    const avatarRect = heroAvatarEl.getBoundingClientRect();
+    const navRect = topNavEl.getBoundingClientRect();
+    // Profile picture is no longer visible once its bottom edge has scrolled
+    // above or level with the bottom edge of the sticky top nav bar.
+    showStickyName = avatarRect.bottom <= navRect.bottom;
   }
 
   async function refreshChanges() {
@@ -1339,6 +1378,11 @@
 
   async function selectContact(contact: Contact) {
     detail = contact;
+    showStickyName = false;
+    showDetailMenu = false;
+    if (detailViewEl) {
+      detailViewEl.scrollTop = 0;
+    }
     selectedPhotoUrl = null;
     contactHistory = [];
     expandedHistoryVersions = new Set();
@@ -1952,6 +1996,7 @@
     await refreshAccounts();
 
     // Listen for real-time capture progress
+    window.addEventListener('resize', updateStickyState);
     unlistenProgress = await listenCaptureProgress((progress) => {
       captureProgress = progress;
     });
@@ -1961,6 +2006,7 @@
     unlistenProgress?.();
     window.removeEventListener('keydown', handleGlobalKeyDown);
     window.removeEventListener('click', handleWindowClick);
+    window.removeEventListener('resize', updateStickyState);
     colorScheme.removeEventListener('change', syncSystemTheme);
   });
 </script>
@@ -2398,19 +2444,26 @@
     <main class="main-area">
       {#if pageView === 'contacts'}
         {#if detail}
-          <!-- Pixel-Perfect Contact Detail View (Screenshot 2) -->
-          <div class="detail-view">
-            <!-- ── Sticky Contact Header (pinned on scroll) ─────────────────── -->
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="detail-sticky-header" onclick={(e) => { if (showDetailMenu && !(e.target as HTMLElement).closest('.detail-menu-container')) showDetailMenu = false; }}>
-              <!-- Top Navigation Row -->
+          <div
+            class="detail-view"
+            bind:this={detailViewEl}
+            onscroll={updateStickyState}
+          >
+            <!-- ── Top Pinned Navigation Bar (only nav bar is sticky) ─────────── -->
+            <div
+              class="detail-top-nav-wrapper"
+              class:is-scrolled={showStickyName}
+              bind:this={topNavEl}
+            >
               <div class="detail-top-nav">
-                <button class="icon-btn" onclick={() => detail = undefined} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
-                  <span class="material-symbols-outlined">arrow_back</span>
-                </button>
-                <!-- Contact name (visible in sticky state when scrolled) -->
-                <span class="detail-sticky-name">{getDisplayName(detail)}</span>
+                <div class="detail-top-nav-left">
+                  <button class="icon-btn" onclick={() => detail = undefined} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
+                    <span class="material-symbols-outlined">arrow_back</span>
+                  </button>
+                  <span class="detail-sticky-name" class:visible={showStickyName} title={getDisplayName(detail)}>
+                    {getDisplayName(detail)}
+                  </span>
+                </div>
                 <div class="detail-nav-actions">
                   {#if isFavourite(detail)}
                     <span class="star-indicator" data-tooltip="Starred contact" data-tooltip-pos="bottom">
@@ -2440,13 +2493,17 @@
                           <span class="material-symbols-outlined">data_object</span>
                           <span>View raw payload</span>
                         </button>
-                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactJson(detail!); }}>
-                          <span class="material-symbols-outlined">download</span>
-                          <span>Export JSON</span>
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactCsv(detail!); }}>
+                          <span class="material-symbols-outlined">table_chart</span>
+                          <span>Export Google CSV</span>
                         </button>
                         <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactVcf(detail!); }}>
                           <span class="material-symbols-outlined">contact_page</span>
                           <span>Export vCard</span>
+                        </button>
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactJson(detail!); }}>
+                          <span class="material-symbols-outlined">download</span>
+                          <span>Export JSON</span>
                         </button>
                         <div class="detail-menu-divider"></div>
                         <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; window.print(); }}>
@@ -2458,17 +2515,19 @@
                   </div>
                 </div>
               </div>
+            </div>
 
-              <!-- Detail Hero Avatar & Names -->
-              <div class="detail-hero">
-                <button
-                  type="button"
-                  class="hero-avatar"
-                  onclick={() => showPhotosModal = true}
-                  aria-label="View photos for {getDisplayName(detail)}"
-                  data-tooltip="View photos"
-                  data-tooltip-pos="bottom"
-                >
+            <!-- Detail Hero Avatar & Names (scrolls naturally) -->
+            <div class="detail-hero">
+              <button
+                type="button"
+                class="hero-avatar"
+                bind:this={heroAvatarEl}
+                onclick={() => showPhotosModal = true}
+                aria-label="View photos for {getDisplayName(detail)}"
+                data-tooltip="View photos"
+                data-tooltip-pos="bottom"
+              >
                   {#if getAvatarSource(detail, media)}
                     <img
                       src={getAvatarSource(detail, media)}
@@ -2576,8 +2635,7 @@
                   {/each}
                 </div>
               {/if}
-            </div>
-            <!-- ── End Sticky Header ──────────────────────────────────────────── -->
+
 
             <!-- Structured Details Cards Grid -->
             <div class="detail-cards-grid">
@@ -4437,9 +4495,11 @@
           {/if}
         </div>
         <div class="modal-footer">
-          <span class="settings-note" role="status">
-            {settingsTab === 'preferences' || settingsTab === 'schedule' ? preferenceNotice : 'Contact History · Local contact archiving'}
-          </span>
+          {#if preferenceNotice}
+            <span class="settings-note" role="status">
+              {preferenceNotice}
+            </span>
+          {/if}
           <button class="btn-primary" onclick={() => showSettingsModal = false}>Done</button>
         </div>
       </div>
@@ -4470,6 +4530,10 @@
           <ContactPayloadViewer payload={detail.payload as Record<string, unknown>} maxHeight="100%" />
         </div>
         <div class="modal-footer">
+          <button class="btn-secondary" onclick={() => downloadContactCsv(detail!)}>
+            <span class="material-symbols-outlined" style="font-size: 16px;">table_chart</span>
+            <span>Download CSV</span>
+          </button>
           <button class="btn-secondary" onclick={() => downloadContactJson(detail!)}>
             <span class="material-symbols-outlined" style="font-size: 16px;">download</span>
             <span>Download JSON</span>

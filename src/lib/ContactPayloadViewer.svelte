@@ -296,24 +296,27 @@
     </div>
   </div>
 
-  <!-- Meta pills -->
-  <div class="cpv-meta-bar">
-    <span class="cpv-meta-pill">
+  <!-- Meta info bar -->
+  <div class="cpv-meta-bar" role="status" aria-label="Payload metadata">
+    <span class="cpv-meta-item">
       <span class="material-symbols-outlined">view_list</span>
-      {lineCount} lines
+      <span>{lineCount} lines</span>
     </span>
-    <span class="cpv-meta-pill">
+    <span class="cpv-meta-sep" aria-hidden="true">•</span>
+    <span class="cpv-meta-item">
       <span class="material-symbols-outlined">straighten</span>
-      {byteSize < 1024 ? byteSize + ' B' : (byteSize / 1024).toFixed(1) + ' KB'}
+      <span>{byteSize < 1024 ? byteSize + ' B' : (byteSize / 1024).toFixed(1) + ' KB'}</span>
     </span>
-    <span class="cpv-meta-pill">
+    <span class="cpv-meta-sep" aria-hidden="true">•</span>
+    <span class="cpv-meta-item">
       <span class="material-symbols-outlined">category</span>
-      {topKeyCount} top-level keys
+      <span>{topKeyCount} top-level keys</span>
     </span>
     {#if showClean}
-      <span class="cpv-meta-pill cpv-meta-clean">
+      <span class="cpv-meta-sep" aria-hidden="true">•</span>
+      <span class="cpv-meta-item cpv-meta-clean">
         <span class="material-symbols-outlined">auto_fix_high</span>
-        metadata stripped
+        <span>metadata stripped</span>
       </span>
     {/if}
   </div>
@@ -598,30 +601,44 @@
   .cpv-meta-bar {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: 8px;
+    padding: 6px 14px;
     background: var(--google-surface);
     border-bottom: 1px solid var(--google-border-subtle);
     flex-wrap: wrap;
+    font-size: 11.5px;
+    color: var(--google-text-secondary);
+    user-select: none;
+    cursor: default;
   }
 
-  .cpv-meta-pill {
+  .cpv-meta-item {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     font-size: 11.5px;
     color: var(--google-text-secondary);
-    background: var(--surface-base);
-    border: 1px solid var(--google-border-subtle);
-    padding: 2px 8px;
-    border-radius: 10px;
+    white-space: nowrap;
   }
 
-  .cpv-meta-pill .material-symbols-outlined { font-size: 13px; }
+  .cpv-meta-item .material-symbols-outlined {
+    font-size: 14px;
+    color: var(--google-text-tertiary);
+  }
+
+  .cpv-meta-sep {
+    color: var(--google-border);
+    font-size: 8px;
+    line-height: 1;
+    user-select: none;
+    opacity: 0.6;
+  }
 
   .cpv-meta-clean {
-    background: var(--google-blue-surface);
-    border-color: var(--google-blue);
+    color: var(--google-text-secondary);
+  }
+
+  .cpv-meta-clean .material-symbols-outlined {
     color: var(--google-blue);
   }
 

@@ -1525,6 +1525,18 @@ input.search-input:focus-visible {
   font-variation-settings: 'FILL' 1;
 }
 
+/* Avatar and Selection Checkbox */
+.avatar-select-container {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .avatar-circle {
   width: 36px;
   height: 36px;
@@ -1540,6 +1552,129 @@ input.search-input:focus-visible {
   font-size: 13px;
   position: relative;
   flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+.contact-select-checkbox {
+  position: absolute;
+  inset: 0;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  z-index: 2;
+}
+
+.contact-select-checkbox::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+  border: 2px solid var(--google-text-secondary);
+  background-color: var(--surface-base);
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.contact-select-checkbox:hover {
+  background-color: var(--google-surface-hover);
+}
+
+.contact-row:hover .avatar-select-container .avatar-circle,
+.contact-row:focus-within .avatar-select-container .avatar-circle,
+.contact-row.is-selected .avatar-select-container .avatar-circle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.contact-row:hover .avatar-select-container .contact-select-checkbox,
+.contact-row:focus-within .avatar-select-container .contact-select-checkbox,
+.contact-row.is-selected .avatar-select-container .contact-select-checkbox {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.contact-select-checkbox.checked::before {
+  background-color: var(--google-blue);
+  border-color: var(--google-blue);
+}
+
+.contact-select-checkbox .check-icon {
+  position: absolute;
+  font-size: 16px;
+  color: #ffffff;
+  font-weight: 700;
+  user-select: none;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.contact-row.is-selected {
+  background-color: rgba(26, 115, 232, 0.08) !important;
+}
+
+:root[data-theme="dark"] .contact-row.is-selected {
+  background-color: rgba(138, 180, 248, 0.12) !important;
+}
+
+/* Header master checkbox */
+.th-master-checkbox {
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.th-master-checkbox:hover {
+  background-color: var(--google-surface-hover);
+}
+
+.th-master-checkbox::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+  border: 2px solid var(--google-text-secondary);
+  background-color: var(--surface-base);
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.th-master-checkbox.checked::before,
+.th-master-checkbox.indeterminate::before {
+  background-color: var(--google-blue);
+  border-color: var(--google-blue);
+}
+
+.th-master-checkbox .check-icon {
+  position: absolute;
+  font-size: 16px;
+  color: #ffffff;
+  font-weight: 700;
+  user-select: none;
+  pointer-events: none;
 }
 
 .avatar-img {
@@ -3735,7 +3870,7 @@ button:disabled {
 /* Responsive workspace: constrain reading widths, allow the data grid to scroll. */
 .content-body, .main-area, .topbar-search, .search-input { min-width: 0; min-height: 0; }
 .main-area { container-type: inline-size; }
-.detail-view { padding: 24px clamp(20px, 4vw, 64px) 48px; }
+.detail-view { --detail-pad-x: clamp(20px, 4vw, 64px); padding: 0 var(--detail-pad-x) 48px; }
 .detail-view > * { width: 100%; max-width: 1120px; margin-inline: auto; }
 .detail-hero { gap: 32px; margin-bottom: 24px; }
 .hero-avatar { width: 160px; height: 160px; min-width: 160px; font-size: 56px; }
@@ -3768,7 +3903,7 @@ button:disabled {
 .col-order-btn { width: 32px; height: 36px; }
 @container (max-width: 840px) {
   .detail-cards-grid, .diff-grid { grid-template-columns: minmax(0, 1fr); }
-  .detail-view { padding: 20px 24px 40px; }
+  .detail-view { --detail-pad-x: 24px; padding-top: 0; padding-bottom: 40px; }
   .detail-nav-actions { gap: 4px; }
   .detail-top-nav { gap: 12px; flex-wrap: wrap; }
   .history-dates-bar { grid-template-columns: 1fr; }
@@ -3787,7 +3922,7 @@ button:disabled {
   .window-controls { height: 48px; }
   .win-btn { width: 36px; }
   .popover { top: 52px; right: 12px; }
-  .detail-view { padding: 16px; }
+  .detail-view { --detail-pad-x: 16px; padding-top: 0; padding-bottom: 24px; }
   .detail-card { padding: 16px; }
   .hero-avatar { width: 72px; height: 72px; min-width: 72px; }
   .detail-hero { gap: 16px; }
@@ -4156,6 +4291,10 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
 :root[data-density="compact"] .contact-row { height: 40px; }
 :root[data-density="compact"] .contact-row td { padding-block: 4px; }
 :root[data-density="compact"] .contact-row .avatar-circle { width: 28px; height: 28px; min-width: 28px; }
+:root[data-density="compact"] .contact-row .avatar-select-container { width: 28px; height: 28px; min-width: 28px; }
+:root[data-density="compact"] .contact-row .contact-select-checkbox { width: 28px; height: 28px; }
+:root[data-density="compact"] .contact-row .contact-select-checkbox::before { width: 16px; height: 16px; }
+:root[data-density="compact"] .contact-row .contact-select-checkbox .check-icon { font-size: 14px; }
 :root[data-density="compact"] .contact-row .label-chip { min-height: 20px; height: 20px; padding-block: 2px; }
 .filter-clear-badge {
   display: inline-flex;
@@ -4344,25 +4483,72 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   cursor: not-allowed;
 }
 
-/* ── Contact Detail Header (sticky disabled for now) ────────────────────── */
-.detail-sticky-header {
-  margin-bottom: 8px;
+/* ── Top Pinned Navigation Bar (only nav bar is sticky) ─────────────────── */
+.detail-top-nav-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background-color: var(--surface-base);
+  margin-left: calc(-1 * var(--detail-pad-x, clamp(20px, 4vw, 64px)));
+  margin-right: calc(-1 * var(--detail-pad-x, clamp(20px, 4vw, 64px)));
+  padding-left: var(--detail-pad-x, clamp(20px, 4vw, 64px));
+  padding-right: var(--detail-pad-x, clamp(20px, 4vw, 64px));
+  padding-top: 16px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* The contact name shown in the top nav bar (always visible but subtle when not scrolled) */
+.detail-top-nav-wrapper.is-scrolled {
+  border-bottom-color: var(--google-border-subtle);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+:root[data-theme="dark"] .detail-top-nav-wrapper.is-scrolled {
+  border-bottom-color: var(--google-border-subtle);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+
+.detail-top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  gap: 16px;
+}
+
+.detail-top-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Contact name next to back button - visible only when avatar is scrolled out of view */
 .detail-sticky-name {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 500;
   color: var(--google-text);
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 8px;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.2s cubic-bezier(0.2, 0, 0, 1), transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+  pointer-events: none;
 }
 
-/* ── Three-dots "More Options" Dropdown Menu ─────────────────────────────── */
+.detail-sticky-name.visible {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* ── Three-dots "More Options" Dropdown Menu with Pop-in Animation ───────── */
 .detail-menu-container {
   position: relative;
 }
@@ -4374,12 +4560,24 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   background: var(--surface-base);
   border: 1px solid var(--google-border);
   border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.16);
   min-width: 210px;
   z-index: 200;
   overflow: hidden;
-  animation: fadeIn 0.12s ease-out;
   padding: 6px 0;
+  transform-origin: top right;
+  animation: detailMenuPopIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes detailMenuPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.88) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .detail-menu-item {
@@ -4440,4 +4638,129 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
 :root[data-theme="dark"] .detail-menu {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
 }
+
+/* ── Selection Action Bar & Download Dropdown ────────────────────────────── */
+.selection-active-header {
+  background-color: var(--surface-base);
+  border-bottom: 1px solid var(--google-border);
+  animation: fadeIn 0.12s ease-out;
+}
+
+.selection-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.selection-clear-btn {
+  color: var(--google-text-secondary);
+}
+
+.selection-count-text {
+  font-size: 14px;
+  color: var(--google-text);
+  font-weight: 400;
+  user-select: none;
+}
+
+.selection-count-text strong {
+  font-weight: 600;
+}
+
+.btn-select-all-visible {
+  background: none;
+  border: 1px solid var(--google-border);
+  border-radius: 16px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--google-blue);
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.btn-select-all-visible:hover {
+  background-color: rgba(26, 115, 232, 0.08);
+  border-color: var(--google-blue);
+}
+
+:root[data-theme="dark"] .btn-select-all-visible:hover {
+  background-color: rgba(138, 180, 248, 0.12);
+}
+
+.selection-download-container {
+  position: relative;
+}
+
+.selection-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  height: 36px;
+  border-radius: 18px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.selection-download-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--surface-base);
+  border: 1px solid var(--google-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  min-width: 270px;
+  z-index: 200;
+  overflow: hidden;
+  animation: fadeIn 0.12s ease-out;
+  padding: 6px 0;
+}
+
+.selection-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 10px 18px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.1s;
+}
+
+.selection-menu-item:hover {
+  background: var(--google-surface-hover);
+}
+
+.selection-menu-item .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--google-text-secondary);
+  flex-shrink: 0;
+}
+
+.selection-menu-item .menu-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.selection-menu-item .menu-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--google-text);
+}
+
+.selection-menu-item .menu-item-subtitle {
+  font-size: 11px;
+  color: var(--google-text-secondary);
+}
+
+:root[data-theme="dark"] .selection-download-menu {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+}
+
 
