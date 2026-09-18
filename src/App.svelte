@@ -23,20 +23,40 @@
     run_daily: true,
   });
 
-  let activeChipTooltip = $state<{ text: string; x: number; y: number } | null>(null);
+  let activeFloatingTooltip = $state<{ text: string; x: number; y: number; pos: 'right' | 'top' } | null>(null);
 
-  function showChipTooltip(e: MouseEvent | FocusEvent, text: string) {
+  function showTooltip(e: MouseEvent | FocusEvent, text: string, pos: 'right' | 'top' = 'right') {
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
-    activeChipTooltip = {
-      text,
-      x: rect.left + rect.width / 2,
-      y: rect.top - 6,
-    };
+    if (pos === 'right') {
+      const estimatedWidth = text.length * 7 + 24;
+      if (rect.right + estimatedWidth + 12 > window.innerWidth) {
+        activeFloatingTooltip = {
+          text,
+          x: rect.left + rect.width / 2,
+          y: rect.top - 6,
+          pos: 'top',
+        };
+      } else {
+        activeFloatingTooltip = {
+          text,
+          x: rect.right + 8,
+          y: rect.top + rect.height / 2,
+          pos: 'right',
+        };
+      }
+    } else {
+      activeFloatingTooltip = {
+        text,
+        x: rect.left + rect.width / 2,
+        y: rect.top - 6,
+        pos: 'top',
+      };
+    }
   }
 
-  function hideChipTooltip() {
-    activeChipTooltip = null;
+  function hideTooltip() {
+    activeFloatingTooltip = null;
   }
 
   const effectiveCountry = $derived(getEffectiveCountry(preferences));
@@ -3480,7 +3500,7 @@
               <span>Labels</span>
               {#if selectedGroups.length > 0}
                 <span class="sidebar-header-badge" title="{selectedGroups.length} label{selectedGroups.length > 1 ? 's' : ''} active">
-                  {selectedGroups.length}
+                  {selectedGroups.length === 1 ? '1 active' : `${selectedGroups.length} active`}
                 </span>
               {/if}
             </div>
@@ -3546,104 +3566,110 @@
     <main class="main-area">
       {#if pageView === 'contacts'}
         {#if detail}
-          <div
-            class="detail-view"
-            bind:this={detailViewEl}
-            onscroll={updateStickyState}
-          >
-            <!-- ── Top Navigation Row (transforms into a persistent tab when scrolled) ── -->
+          <div class="detail-container">
+            <!-- ── Top Navigation Row (Frozen Row pinned to top, like Google Contacts) ── -->
             <div
-              class="detail-top-nav"
+              class="detail-top-bar"
               class:is-scrolled={isScrolled}
-              bind:this={topNavEl}
             >
-              <div class="detail-top-nav-left">
-                <button class="icon-btn" onclick={() => detail = undefined} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
-                  <span class="material-symbols-outlined">arrow_back</span>
-                </button>
-                <div class="detail-sticky-profile" class:visible={showStickyName}>
-                  <div
-                    class="detail-sticky-avatar"
-                    style="background-color: {getAvatarColor(getDisplayName(detail))};"
-                    aria-hidden="true"
-                  >
-                    {#if getAvatarSource(detail, media)}
-                      <img
-                        src={getAvatarSource(detail, media)}
-                        alt=""
-                        class="detail-sticky-avatar-img"
-                        referrerpolicy="no-referrer"
-                        onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
-                        onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
-                      />
-                    {/if}
-                    <span class="detail-sticky-avatar-initials">{getInitials(getDisplayName(detail))}</span>
-                  </div>
-                  <span class="detail-sticky-name" title={getDisplayName(detail)}>
-                    {getDisplayName(detail)}
-                  </span>
-                </div>
-              </div>
-              <div class="detail-nav-actions">
-                {#if isFavourite(detail)}
-                  <span class="star-indicator" data-tooltip="Starred contact" data-tooltip-pos="bottom">
-                    <span class="material-symbols-outlined icon-filled" style="color: var(--favorite); font-size: 22px;">star</span>
-                  </span>
-                {/if}
-                {#if previewSequence !== null}
-                  <button class="detail-preview-reset" onclick={restoreContactRevision} title="Return to selected snapshot">
-                    <span class="material-symbols-outlined">undo</span>
-                    <span>Previewing snapshot #{previewSequence} · Back to selected</span>
+              <div
+                class="detail-top-nav"
+                bind:this={topNavEl}
+              >
+                <div class="detail-top-nav-left">
+                  <button class="icon-btn" onclick={() => detail = undefined} data-tooltip="Back to list" data-tooltip-pos="bottom" aria-label="Back to list">
+                    <span class="material-symbols-outlined">arrow_back</span>
                   </button>
-                {/if}
-                <div class="detail-version-pill" data-tooltip="Contact revision #{detail.version}" data-tooltip-pos="bottom">
-                  <span class="material-symbols-outlined" style="font-size: 15px;">history</span>
-                  <span>v{detail.version}</span>
-                </div>
-                <!-- Three-dots More Options Menu -->
-                <div class="detail-menu-container">
-                  <button
-                    class="icon-btn"
-                    onclick={() => (showDetailMenu = !showDetailMenu)}
-                    aria-label="More options"
-                    aria-haspopup="true"
-                    aria-expanded={showDetailMenu}
-                    data-tooltip="More options"
-                    data-tooltip-pos="bottom"
-                  >
-                    <span class="material-symbols-outlined">more_vert</span>
-                  </button>
-                  {#if showDetailMenu}
-                    <div class="detail-menu" role="menu">
-                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; showRawDataModal = true; }}>
-                        <span class="material-symbols-outlined">data_object</span>
-                        <span>View raw payload</span>
-                      </button>
-                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactCsv(detail!); }}>
-                        <span class="material-symbols-outlined">table_chart</span>
-                        <span>Export Google CSV</span>
-                      </button>
-                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactVcf(detail!); }}>
-                        <span class="material-symbols-outlined">contact_page</span>
-                        <span>Export vCard</span>
-                      </button>
-                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactJson(detail!); }}>
-                        <span class="material-symbols-outlined">download</span>
-                        <span>Export JSON</span>
-                      </button>
-                      <div class="detail-menu-divider"></div>
-                      <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; window.print(); }}>
-                        <span class="material-symbols-outlined">print</span>
-                        <span>Print</span>
-                      </button>
+                  <div class="detail-sticky-profile" class:visible={showStickyName}>
+                    <div
+                      class="detail-sticky-avatar"
+                      style="background-color: {getAvatarColor(getDisplayName(detail))};"
+                      aria-hidden="true"
+                    >
+                      {#if getAvatarSource(detail, media)}
+                        <img
+                          src={getAvatarSource(detail, media)}
+                          alt=""
+                          class="detail-sticky-avatar-img"
+                          referrerpolicy="no-referrer"
+                          onerror={(e) => { (e.currentTarget as HTMLElement).classList.add('avatar-img-failed'); }}
+                          onload={(e) => { (e.currentTarget as HTMLElement).classList.remove('avatar-img-failed'); }}
+                        />
+                      {/if}
+                      <span class="detail-sticky-avatar-initials">{getInitials(getDisplayName(detail))}</span>
                     </div>
+                    <span class="detail-sticky-name" title={getDisplayName(detail)}>
+                      {getDisplayName(detail)}
+                    </span>
+                  </div>
+                </div>
+                <div class="detail-nav-actions">
+                  {#if isFavourite(detail)}
+                    <span class="star-indicator" data-tooltip="Starred contact" data-tooltip-pos="bottom">
+                      <span class="material-symbols-outlined icon-filled" style="color: var(--favorite); font-size: 22px;">star</span>
+                    </span>
                   {/if}
+                  {#if previewSequence !== null}
+                    <button class="detail-preview-reset" onclick={restoreContactRevision} title="Return to selected snapshot">
+                      <span class="material-symbols-outlined">undo</span>
+                      <span>Previewing snapshot #{previewSequence} · Back to selected</span>
+                    </button>
+                  {/if}
+                  <div class="detail-version-pill" data-tooltip="Contact revision #{detail.version}" data-tooltip-pos="bottom">
+                    <span class="material-symbols-outlined" style="font-size: 15px;">history</span>
+                    <span>v{detail.version}</span>
+                  </div>
+                  <!-- Three-dots More Options Menu -->
+                  <div class="detail-menu-container">
+                    <button
+                      class="icon-btn"
+                      onclick={() => (showDetailMenu = !showDetailMenu)}
+                      aria-label="More options"
+                      aria-haspopup="true"
+                      aria-expanded={showDetailMenu}
+                      data-tooltip="More options"
+                      data-tooltip-pos="bottom"
+                    >
+                      <span class="material-symbols-outlined">more_vert</span>
+                    </button>
+                    {#if showDetailMenu}
+                      <div class="detail-menu" role="menu">
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; showRawDataModal = true; }}>
+                          <span class="material-symbols-outlined">data_object</span>
+                          <span>View raw payload</span>
+                        </button>
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactCsv(detail!); }}>
+                          <span class="material-symbols-outlined">table_chart</span>
+                          <span>Export Google CSV</span>
+                        </button>
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactVcf(detail!); }}>
+                          <span class="material-symbols-outlined">contact_page</span>
+                          <span>Export vCard</span>
+                        </button>
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; downloadContactJson(detail!); }}>
+                          <span class="material-symbols-outlined">download</span>
+                          <span>Export JSON</span>
+                        </button>
+                        <div class="detail-menu-divider"></div>
+                        <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; window.print(); }}>
+                          <span class="material-symbols-outlined">print</span>
+                          <span>Print</span>
+                        </button>
+                      </div>
+                    {/if}
+                  </div>
                 </div>
               </div>
             </div>
 
-            <!-- Detail Hero Avatar & Names (scrolls naturally) -->
-            <div class="detail-hero">
+            <!-- Scrollable Detail Content (scrolls underneath frozen top bar) -->
+            <div
+              class="detail-view"
+              bind:this={detailViewEl}
+              onscroll={updateStickyState}
+            >
+              <!-- Detail Hero Avatar & Names (scrolls naturally) -->
+              <div class="detail-hero">
               <button
                 type="button"
                 class="hero-avatar"
@@ -4290,13 +4316,16 @@
               </div>
             </div>
           </div>
+        </div>
         {:else}
           <!-- Main Contacts Table List View (Screenshots 1 & 3) -->
-          <div class="view-header">
+          <div class="view-header" class:has-filter-bar={selectedGroups.length > 0}>
             <div class="view-header-main">
               <h1 class="view-title">
                 {#if selectedGroups.length === 0}
                   Contacts ({capture ? capture.contact_count : contacts.length})
+                {:else if selectedGroups.length === 1}
+                  {groups.find((g) => g.resource_name === selectedGroups[0])?.name || 'Filtered Contacts'} ({contacts.length})
                 {:else}
                   Filtered Contacts ({contacts.length})
                 {/if}
@@ -4340,13 +4369,13 @@
             <div class="filter-contacts-bar" role="region" aria-label="Active label filters">
               <div class="filter-bar-left">
                 <div class="filter-bar-lead">
-                  <span class="material-symbols-outlined filter-funnel-icon">filter_alt</span>
-                  <span class="filter-bar-title">Filter by label{selectedGroups.length > 1 ? 's' : ''} ({selectedGroups.length}):</span>
+                  <span class="material-symbols-outlined filter-lead-icon">filter_list</span>
+                  <span class="filter-lead-label">Filtered by:</span>
                 </div>
                 <div class="filter-chips-list">
                   {#each selectedGroups as resName (resName)}
                     {@const grp = groups.find((g) => g.resource_name === resName)}
-                    <div class="filter-chip">
+                    <div class="filter-chip" title={grp?.name || resName}>
                       <span class="material-symbols-outlined filter-chip-icon">label</span>
                       <span class="filter-chip-text">{grp?.name || resName}</span>
                       <button
@@ -4371,30 +4400,31 @@
                       class="segmented-btn"
                       class:active={labelMatchMode === 'any'}
                       onclick={() => { labelMatchMode = 'any'; updateDisplayedContacts(); }}
-                      title="Show contacts with ANY selected label (OR)"
+                      title="Show contacts matching ANY of the selected labels (OR)"
                     >
-                      Any label (OR)
+                      Any label
                     </button>
                     <button
                       type="button"
                       class="segmented-btn"
                       class:active={labelMatchMode === 'all'}
                       onclick={() => { labelMatchMode = 'all'; updateDisplayedContacts(); }}
-                      title="Show contacts with ALL selected labels (AND)"
+                      title="Show contacts matching ALL of the selected labels (AND)"
                     >
-                      All labels (AND)
+                      All labels
                     </button>
                   </div>
+                  <span class="filter-bar-divider" aria-hidden="true"></span>
                 {/if}
                 <button
                   type="button"
                   class="filter-clear-all-btn"
                   onclick={clearLabelFilter}
-                  title="Clear all label filters"
-                  aria-label="Clear all label filters"
+                  title="Clear {selectedGroups.length > 1 ? 'all label filters' : 'label filter'}"
+                  aria-label="Clear {selectedGroups.length > 1 ? 'all label filters' : 'label filter'}"
                 >
-                  <span class="material-symbols-outlined">filter_alt_off</span>
-                  <span>Clear all</span>
+                  <span class="material-symbols-outlined">close</span>
+                  <span>{selectedGroups.length > 1 ? 'Clear all' : 'Clear'}</span>
                 </button>
               </div>
             </div>
@@ -4687,6 +4717,7 @@
                             <div class="name-cell-content">
                               <div
                                 class="avatar-select-container"
+                                class:selected={selectedContactKeys.includes(contact.resource_name)}
                                 onclick={(e) => toggleContactSelection(contact.resource_name, e)}
                                 onkeydown={(e) => {
                                   if (e.key === 'Enter' || e.key === ' ') {
@@ -4715,9 +4746,9 @@
                                   <span>{getInitials(getDisplayName(contact))}</span>
                                 </div>
                                 <div class="contact-select-checkbox" class:checked={selectedContactKeys.includes(contact.resource_name)}>
-                                  <span class="material-symbols-outlined">
-                                    {selectedContactKeys.includes(contact.resource_name) ? 'check' : ''}
-                                  </span>
+                                  {#if selectedContactKeys.includes(contact.resource_name)}
+                                    <span class="material-symbols-outlined check-icon">check</span>
+                                  {/if}
                                 </div>
                               </div>
                               <span class="name-text">{getDisplayName(contact)}</span>
@@ -4738,9 +4769,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, jobText);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy job info'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy job info', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy job info"
                                 >
                                   <span class="material-symbols-outlined">
@@ -4748,8 +4781,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'email'}
@@ -4762,8 +4793,6 @@
                                   href="mailto:{email}"
                                   class="table-cell-link"
                                   onclick={(e) => e.stopPropagation()}
-                                  data-tooltip="Send email"
-                                  data-tooltip-pos="top"
                                   aria-label="Send email to {email}"
                                 >
                                   {email}
@@ -4775,9 +4804,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, email);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy email'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy email', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy email"
                                 >
                                   <span class="material-symbols-outlined">
@@ -4785,8 +4816,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'phone'}
@@ -4799,8 +4828,6 @@
                                   href="tel:{phone}"
                                   class="table-cell-link"
                                   onclick={(e) => e.stopPropagation()}
-                                  data-tooltip="Call number"
-                                  data-tooltip-pos="top"
                                   aria-label="Call {phone}"
                                 >
                                   {phone}
@@ -4812,9 +4839,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, phone);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy phone'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy phone', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy phone"
                                 >
                                   <span class="material-symbols-outlined">
@@ -4822,8 +4851,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'birthday'}
@@ -4840,9 +4867,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, bday);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy birthday'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy birthday', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy birthday"
                                 >
                                   <span class="material-symbols-outlined">
@@ -4850,8 +4879,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'labels'}
@@ -4868,9 +4895,9 @@
                                     toggleLabelFilter(lbl.resourceName);
                                     navigate('contacts');
                                   }}
-                                  onmouseenter={(e) => showChipTooltip(e, isSelected ? `Remove filter: ${lbl.name}` : `Filter by label: ${lbl.name}`)}
-                                  onmouseleave={hideChipTooltip}
-                                  onblur={hideChipTooltip}
+                                  onmouseenter={(e) => showTooltip(e, isSelected ? `Remove filter: ${lbl.name}` : `Filter by label: ${lbl.name}`, 'top')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
                                 >
                                   {lbl.name}
@@ -4892,9 +4919,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, org);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy company'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy company', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy company"
                                 >
                                   <span class="material-symbols-outlined">
@@ -4902,8 +4931,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'title'}
@@ -4920,9 +4947,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, title);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy job title'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy job title', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy job title"
                                 >
                                   <span class="material-symbols-outlined">
@@ -4930,8 +4959,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'address'}
@@ -4948,8 +4975,6 @@
                                     e.preventDefault();
                                     api.openExternalUrl(getMapsUrlFromAddress(addr));
                                   }}
-                                  data-tooltip="Open in Google Maps"
-                                  data-tooltip-pos="top"
                                   aria-label="Open in Google Maps: {addr}"
                                 >
                                   {addr}
@@ -4961,9 +4986,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, addr);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy address'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy address', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy address"
                                 >
                                   <span class="material-symbols-outlined">
@@ -4971,8 +4998,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'notes'}
@@ -4989,9 +5014,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, notes);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy notes'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy notes', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy notes"
                                 >
                                   <span class="material-symbols-outlined">
@@ -4999,8 +5026,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {/if}
@@ -5028,6 +5053,7 @@
                             <div class="name-cell-content">
                               <div
                                 class="avatar-select-container"
+                                class:selected={selectedContactKeys.includes(contact.resource_name)}
                                 onclick={(e) => toggleContactSelection(contact.resource_name, e)}
                                 onkeydown={(e) => {
                                   if (e.key === 'Enter' || e.key === ' ') {
@@ -5056,9 +5082,9 @@
                                   <span>{getInitials(getDisplayName(contact))}</span>
                                 </div>
                                 <div class="contact-select-checkbox" class:checked={selectedContactKeys.includes(contact.resource_name)}>
-                                  <span class="material-symbols-outlined">
-                                    {selectedContactKeys.includes(contact.resource_name) ? 'check' : ''}
-                                  </span>
+                                  {#if selectedContactKeys.includes(contact.resource_name)}
+                                    <span class="material-symbols-outlined check-icon">check</span>
+                                  {/if}
                                 </div>
                               </div>
                               <span class="name-text">{getDisplayName(contact)}</span>
@@ -5079,9 +5105,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, jobText);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy job info'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy job info', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy job info"
                                 >
                                   <span class="material-symbols-outlined">
@@ -5089,8 +5117,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'email'}
@@ -5103,8 +5129,6 @@
                                   href="mailto:{email}"
                                   class="table-cell-link"
                                   onclick={(e) => e.stopPropagation()}
-                                  data-tooltip="Send email"
-                                  data-tooltip-pos="top"
                                   aria-label="Send email to {email}"
                                 >
                                   {email}
@@ -5116,9 +5140,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, email);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy email'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy email', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy email"
                                 >
                                   <span class="material-symbols-outlined">
@@ -5126,8 +5152,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'phone'}
@@ -5140,8 +5164,6 @@
                                   href="tel:{phone}"
                                   class="table-cell-link"
                                   onclick={(e) => e.stopPropagation()}
-                                  data-tooltip="Call number"
-                                  data-tooltip-pos="top"
                                   aria-label="Call {phone}"
                                 >
                                   {phone}
@@ -5153,9 +5175,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, phone);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy phone'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy phone', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy phone"
                                 >
                                   <span class="material-symbols-outlined">
@@ -5163,8 +5187,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'birthday'}
@@ -5181,9 +5203,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, bday);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy birthday'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy birthday', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy birthday"
                                 >
                                   <span class="material-symbols-outlined">
@@ -5191,8 +5215,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'labels'}
@@ -5209,9 +5231,9 @@
                                     toggleLabelFilter(lbl.resourceName);
                                     navigate('contacts');
                                   }}
-                                  onmouseenter={(e) => showChipTooltip(e, isSelected ? `Remove filter: ${lbl.name}` : `Filter by label: ${lbl.name}`)}
-                                  onmouseleave={hideChipTooltip}
-                                  onblur={hideChipTooltip}
+                                  onmouseenter={(e) => showTooltip(e, isSelected ? `Remove filter: ${lbl.name}` : `Filter by label: ${lbl.name}`, 'top')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="{isSelected ? 'Remove from filter: ' : 'Filter by label: '}{lbl.name}"
                                 >
                                   {lbl.name}
@@ -5233,9 +5255,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, org);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy company'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy company', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy company"
                                 >
                                   <span class="material-symbols-outlined">
@@ -5243,8 +5267,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'title'}
@@ -5261,9 +5283,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, title);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy job title'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy job title', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy job title"
                                 >
                                   <span class="material-symbols-outlined">
@@ -5271,8 +5295,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'address'}
@@ -5289,8 +5311,6 @@
                                     e.preventDefault();
                                     api.openExternalUrl(getMapsUrlFromAddress(addr));
                                   }}
-                                  data-tooltip="Open in Google Maps"
-                                  data-tooltip-pos="top"
                                   aria-label="Open in Google Maps: {addr}"
                                 >
                                   {addr}
@@ -5302,9 +5322,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, addr);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy address'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy address', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy address"
                                 >
                                   <span class="material-symbols-outlined">
@@ -5312,8 +5334,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {:else if colKey === 'notes'}
@@ -5330,9 +5350,11 @@
                                   onclick={(e) => {
                                     e.stopPropagation();
                                     copyFieldValue(cellKey, notes);
+                                    showTooltip(e, 'Copied!', 'right');
                                   }}
-                                  data-tooltip={copiedFieldKey === cellKey ? 'Copied!' : 'Copy notes'}
-                                  data-tooltip-pos="top"
+                                  onmouseenter={(e) => showTooltip(e, copiedFieldKey === cellKey ? 'Copied!' : 'Copy notes', 'right')}
+                                  onmouseleave={hideTooltip}
+                                  onblur={hideTooltip}
                                   aria-label="Copy notes"
                                 >
                                   <span class="material-symbols-outlined">
@@ -5340,8 +5362,6 @@
                                   </span>
                                 </button>
                               </div>
-                            {:else}
-                              <span class="table-cell-empty">-</span>
                             {/if}
                           </td>
                         {/if}
@@ -6729,14 +6749,14 @@
     </div>
   {/if}
 
-  <!-- Floating Material Design Tooltip for Label Chips -->
-  {#if activeChipTooltip}
+  <!-- Floating Material Design Tooltip (Rendered at root, never clipped or hidden) -->
+  {#if activeFloatingTooltip}
     <div
-      class="floating-chip-tooltip"
-      style="left: {activeChipTooltip.x}px; top: {activeChipTooltip.y}px;"
+      class="floating-global-tooltip pos-{activeFloatingTooltip.pos}"
+      style="left: {activeFloatingTooltip.x}px; top: {activeFloatingTooltip.y}px;"
       role="tooltip"
     >
-      {activeChipTooltip.text}
+      {activeFloatingTooltip.text}
     </div>
   {/if}
 

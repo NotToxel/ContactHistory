@@ -1547,13 +1547,27 @@ input.search-input:focus-visible {
   width: 36px;
   height: 36px;
   min-width: 36px;
+  border-radius: 50%;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.avatar-select-container:hover {
+  background-color: var(--google-surface-hover);
+}
+
+.avatar-select-container:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: 2px;
 }
 
 .avatar-circle {
+  position: absolute;
+  inset: 0;
   width: 36px;
   height: 36px;
   min-width: 36px;
@@ -1566,70 +1580,33 @@ input.search-input:focus-visible {
   justify-content: center;
   font-weight: 500;
   font-size: 13px;
-  position: relative;
-  flex-shrink: 0;
-  transition: opacity 0.15s ease;
+  z-index: 1;
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .contact-select-checkbox {
   position: absolute;
-  inset: 0;
-  width: 36px;
-  height: 36px;
-  margin: 0;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
-  z-index: 2;
-}
-
-.contact-select-checkbox::before {
-  content: '';
   width: 18px;
   height: 18px;
-  border-radius: 2px;
+  border-radius: 3px;
   border: 2px solid var(--google-text-secondary);
   background-color: var(--surface-base);
   box-sizing: border-box;
-  transition: all 0.15s ease;
-}
-
-.contact-select-checkbox:hover {
-  background-color: var(--google-surface-hover);
-}
-
-.contact-row:hover .avatar-select-container .avatar-circle,
-.contact-row:focus-within .avatar-select-container .avatar-circle,
-.contact-row.is-selected .avatar-select-container .avatar-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
   opacity: 0;
   pointer-events: none;
-}
-
-.contact-row:hover .avatar-select-container .contact-select-checkbox,
-.contact-row:focus-within .avatar-select-container .contact-select-checkbox,
-.contact-row.is-selected .avatar-select-container .contact-select-checkbox {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.contact-select-checkbox.checked::before {
-  background-color: var(--google-blue);
-  border-color: var(--google-blue);
+  transform: scale(0.8);
+  transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.12s ease, border-color 0.12s ease;
 }
 
 .contact-select-checkbox .check-icon {
-  position: absolute;
-  font-size: 16px;
-  color: #ffffff;
+  font-size: 14px;
   font-weight: 700;
+  color: #ffffff;
+  line-height: 1;
   user-select: none;
   pointer-events: none;
   display: flex;
@@ -1637,12 +1614,46 @@ input.search-input:focus-visible {
   justify-content: center;
 }
 
+.contact-row:hover .avatar-select-container .avatar-circle,
+.avatar-select-container:hover .avatar-circle,
+.avatar-select-container:focus-visible .avatar-circle,
+.avatar-select-container.selected .avatar-circle {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85);
+}
+
+.contact-row:hover .avatar-select-container .contact-select-checkbox,
+.avatar-select-container:hover .contact-select-checkbox,
+.avatar-select-container:focus-visible .contact-select-checkbox,
+.avatar-select-container.selected .contact-select-checkbox,
+.contact-select-checkbox.checked {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.avatar-select-container:hover .contact-select-checkbox:not(.checked) {
+  border-color: var(--google-text);
+}
+
+.contact-select-checkbox.checked {
+  background-color: var(--google-blue) !important;
+  border-color: var(--google-blue) !important;
+  color: #ffffff;
+}
+
 .contact-row.is-selected {
-  background-color: rgba(26, 115, 232, 0.08) !important;
+  background-color: var(--google-blue-surface) !important;
 }
 
 :root[data-theme="dark"] .contact-row.is-selected {
-  background-color: rgba(138, 180, 248, 0.12) !important;
+  background-color: rgba(138, 180, 248, 0.16) !important;
+}
+
+:root[data-theme="dark"] .contact-select-checkbox {
+  background-color: var(--surface-base);
+  border-color: var(--google-text-secondary);
 }
 
 /* Header master checkbox */
@@ -1841,17 +1852,16 @@ input.search-input:focus-visible {
 
 /* Table Cell Content, Links, and Copy Buttons */
 .table-cell-content {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
+  gap: 6px;
+  max-width: 100%;
   min-width: 0;
+  vertical-align: middle;
 }
 
 .table-cell-text,
 .table-cell-link {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1874,9 +1884,9 @@ input.search-input:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -1885,17 +1895,19 @@ input.search-input:focus-visible {
   opacity: 0;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  transform: scale(0.85);
 }
 
 .table-cell-copy-btn .material-symbols-outlined {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .contact-row:hover .table-cell-copy-btn,
 .table-cell-copy-btn:focus-visible,
 .table-cell-copy-btn.copied {
   opacity: 1;
+  transform: scale(1);
 }
 
 .table-cell-copy-btn:hover {
@@ -1914,15 +1926,10 @@ input.search-input:focus-visible {
   outline-offset: 1px;
 }
 
-.table-cell-empty {
-  color: var(--google-text-tertiary);
-}
-
-/* Floating Material Design Tooltip */
-.floating-chip-tooltip {
+/* Floating Material Design Tooltip (Rendered at root, never clipped or hidden) */
+.floating-global-tooltip {
   position: fixed;
-  z-index: 9999;
-  transform: translate(-50%, -100%);
+  z-index: 10000;
   pointer-events: none;
   background-color: var(--google-text, #202124);
   color: var(--surface-base, #ffffff);
@@ -1930,19 +1937,40 @@ input.search-input:focus-visible {
   font-weight: 500;
   padding: 5px 9px;
   border-radius: 6px;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
   white-space: nowrap;
   letter-spacing: 0.2px;
-  animation: chipTooltipFade 0.12s ease-out;
+  line-height: 1.3;
 }
 
-:root[data-theme="dark"] .floating-chip-tooltip {
+.floating-global-tooltip.pos-right {
+  transform: translateY(-50%);
+  animation: globalTooltipFadeRight 0.12s ease-out;
+}
+
+.floating-global-tooltip.pos-top {
+  transform: translate(-50%, -100%);
+  animation: globalTooltipFadeTop 0.12s ease-out;
+}
+
+:root[data-theme="dark"] .floating-global-tooltip {
   background-color: #e8eaed;
   color: #202124;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
-@keyframes chipTooltipFade {
+@keyframes globalTooltipFadeRight {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+@keyframes globalTooltipFadeTop {
   from {
     opacity: 0;
     transform: translate(-50%, calc(-100% + 3px));
@@ -4050,7 +4078,7 @@ button:disabled {
 /* Responsive workspace: constrain reading widths, allow the data grid to scroll. */
 .content-body, .main-area, .topbar-search, .search-input { min-width: 0; min-height: 0; }
 .main-area { container-type: inline-size; }
-.detail-view { --detail-pad-x: clamp(20px, 4vw, 64px); padding: 24px var(--detail-pad-x) 48px; }
+.detail-view { --detail-pad-x: clamp(20px, 4vw, 64px); padding: 16px var(--detail-pad-x) 48px; }
 .detail-view > * { width: 100%; max-width: 1120px; margin-inline: auto; }
 .detail-hero { gap: 32px; margin-bottom: 24px; }
 .hero-avatar { width: 160px; height: 160px; min-width: 160px; font-size: 56px; }
@@ -4107,6 +4135,8 @@ button:disabled {
   .hero-avatar { width: 72px; height: 72px; min-width: 72px; }
   .detail-hero { gap: 16px; }
   .view-header { padding: 16px; gap: 8px; }
+  .view-header.has-filter-bar { padding-bottom: 4px; }
+  .filter-contacts-bar { padding: 0 16px 10px 16px; }
   .modal-header, .modal-body, .modal-footer { padding: 16px; }
   .col-actions > span { display: none; }
   .changes-container { padding: 16px; }
@@ -4505,9 +4535,8 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
 :root[data-density="compact"] .contact-row td { padding-block: 4px; }
 :root[data-density="compact"] .contact-row .avatar-circle { width: 28px; height: 28px; min-width: 28px; }
 :root[data-density="compact"] .contact-row .avatar-select-container { width: 28px; height: 28px; min-width: 28px; }
-:root[data-density="compact"] .contact-row .contact-select-checkbox { width: 28px; height: 28px; }
-:root[data-density="compact"] .contact-row .contact-select-checkbox::before { width: 16px; height: 16px; }
-:root[data-density="compact"] .contact-row .contact-select-checkbox .check-icon { font-size: 14px; }
+:root[data-density="compact"] .contact-row .contact-select-checkbox { width: 16px; height: 16px; }
+:root[data-density="compact"] .contact-row .contact-select-checkbox .check-icon { font-size: 13px; }
 :root[data-density="compact"] .contact-row .label-chip { min-height: 20px; height: 20px; padding-block: 2px; }
 .filter-clear-badge {
   display: inline-flex;
@@ -4696,7 +4725,41 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   cursor: not-allowed;
 }
 
-/* ── Top Navigation Row (Frozen Row when Scrolled) ───────────────────────── */
+/* ── Detail View Container & Frozen Top Bar ─────────────────────────────── */
+.detail-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--surface-base);
+}
+
+.detail-top-bar {
+  flex-shrink: 0;
+  width: 100%;
+  background-color: var(--surface-base);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  z-index: 50;
+  padding: 10px 0;
+}
+
+.detail-top-bar.is-scrolled {
+  border-bottom-color: var(--google-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="dark"] .detail-top-bar {
+  background-color: var(--surface-base);
+}
+
+:root[data-theme="dark"] .detail-top-bar.is-scrolled {
+  border-bottom-color: var(--google-border-subtle);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
 .detail-top-nav {
   display: flex;
   align-items: center;
@@ -4704,30 +4767,9 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   width: 100%;
   max-width: 1120px;
   margin-inline: auto;
-  margin-bottom: 20px;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  gap: 16px;
+  padding: 0 var(--detail-pad-x, clamp(20px, 4vw, 64px));
   box-sizing: border-box;
-  padding: 10px 0;
-  background-color: var(--surface-base);
-  border-bottom: 1px solid transparent;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.detail-top-nav.is-scrolled {
-  border-bottom-color: var(--google-border);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-}
-
-:root[data-theme="dark"] .detail-top-nav {
-  background-color: var(--surface-base);
-}
-
-:root[data-theme="dark"] .detail-top-nav.is-scrolled {
-  border-bottom-color: var(--google-border-subtle);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  gap: 16px;
 }
 
 .detail-top-nav-left {
@@ -5042,19 +5084,22 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background-color: var(--google-blue);
-  color: #ffffff;
-  font-size: 11px;
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background-color: var(--google-blue-surface);
+  color: var(--google-blue);
+  border: 1px solid rgba(26, 115, 232, 0.28);
+  font-size: 10.5px;
   font-weight: 600;
   line-height: 1;
+  letter-spacing: 0.1px;
+  user-select: none;
+  animation: fadeIn 0.15s ease-out;
 }
 
 .sidebar-header-clear {
-  background: none;
+  background: transparent;
   border: none;
   padding: 2px 6px;
   border-radius: 4px;
@@ -5063,12 +5108,11 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   font-family: inherit;
   color: var(--google-blue);
   cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .sidebar-header-clear:hover {
   background-color: var(--google-blue-surface);
-  text-decoration: underline;
 }
 
 .label-nav-item {
@@ -5155,16 +5199,19 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   border-color: var(--google-blue);
 }
 
-/* ── Filter Contacts Bar (Material 3 Native) ─────────────────────────────────── */
+/* ── Filter Contacts Bar (Material 3 Seamless Integration) ───────────────────── */
+.view-header.has-filter-bar {
+  padding-bottom: 4px;
+}
+
 .filter-contacts-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 8px 24px;
+  padding: 0 24px 10px 24px;
   background-color: var(--surface-base);
-  border-bottom: 1px solid var(--google-border);
   animation: fadeIn 0.15s ease-out;
 }
 
@@ -5172,54 +5219,58 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .filter-bar-lead {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   color: var(--google-text-secondary);
-  font-size: 13px;
-  font-weight: 500;
+  user-select: none;
+  flex-shrink: 0;
 }
 
-.filter-funnel-icon {
+.filter-bar-lead .filter-lead-icon {
   font-size: 18px;
-  color: var(--google-blue);
+  color: var(--google-text-secondary);
 }
 
-.filter-bar-title {
-  font-size: 13px;
+.filter-bar-lead .filter-lead-label {
+  font-size: 12.5px;
+  color: var(--google-text-secondary);
   font-weight: 500;
-  color: var(--google-text);
 }
 
 .filter-chips-list {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
 }
 
+/* Material Design 3 Filter Chip */
 .filter-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 8px 0 10px;
-  border-radius: 14px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  border-radius: 8px;
   background-color: var(--google-blue-surface);
-  border: 1px solid var(--google-blue);
+  border: 1px solid rgba(26, 115, 232, 0.3);
   color: var(--google-blue);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  max-width: 240px;
-  transition: all 0.15s ease;
+  max-width: 260px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  user-select: none;
 }
 
 .filter-chip-icon {
-  font-size: 15px;
+  font-size: 16px;
   color: var(--google-blue);
   flex-shrink: 0;
 }
@@ -5234,8 +5285,8 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   border: none;
   background: transparent;
@@ -5243,83 +5294,101 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   cursor: pointer;
   padding: 0;
   margin-left: 2px;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease;
   flex-shrink: 0;
 }
 
 .filter-chip-remove span {
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
 }
 
 .filter-chip-remove:hover {
-  background-color: rgba(26, 115, 232, 0.25);
-  color: var(--google-red, #d93025);
+  background-color: rgba(26, 115, 232, 0.16);
 }
 
 .filter-bar-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
+/* Material Design 3 Segmented Buttons */
 .match-mode-segmented-control {
   display: inline-flex;
   align-items: center;
-  background-color: var(--google-surface-hover);
   border: 1px solid var(--google-border);
-  border-radius: 16px;
-  padding: 2px;
-  gap: 2px;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: var(--surface-base);
+  height: 32px;
 }
 
 .match-mode-segmented-control .segmented-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 100%;
+  padding: 0 12px;
   background: transparent;
   border: none;
-  border-radius: 14px;
-  padding: 3px 10px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   font-family: inherit;
   color: var(--google-text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  user-select: none;
+}
+
+.match-mode-segmented-control .segmented-btn + .segmented-btn {
+  border-left: 1px solid var(--google-border);
+}
+
+.match-mode-segmented-control .segmented-btn:hover:not(.active) {
+  background-color: var(--google-surface-hover);
+  color: var(--google-text);
 }
 
 .match-mode-segmented-control .segmented-btn.active {
-  background-color: var(--surface-base);
+  background-color: var(--google-blue-surface);
   color: var(--google-blue);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
+.match-mode-segmented-control .segmented-check {
+  font-size: 14px;
+  color: var(--google-blue);
+}
+
+/* Material Design 3 Text Button for Clear All */
 .filter-clear-all-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 10px 0 8px;
-  border-radius: 14px;
-  border: 1px solid var(--google-border);
-  background-color: var(--surface-base);
-  color: var(--google-text-secondary);
-  font-size: 12px;
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--google-blue);
+  font-size: 12.5px;
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease;
+  user-select: none;
 }
 
-.filter-clear-all-btn span {
-  font-size: 15px;
+.filter-clear-all-btn span.material-symbols-outlined {
+  font-size: 16px;
 }
 
 .filter-clear-all-btn:hover {
-  background-color: var(--google-surface-hover);
-  color: var(--google-red, #d93025);
-  border-color: currentColor;
+  background-color: var(--google-blue-surface);
 }
 
 /* ── Table Selection Header Row (Screenshot media_1789747959902.png) ─────────── */
@@ -5461,130 +5530,56 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   position: relative;
 }
 
-/* ── Contact Row Selection & Avatar-to-Checkbox ───────────────────────────── */
-.contact-row.is-selected {
-  background-color: #d3e3fd !important;
-}
-
-:root[data-theme="dark"] .contact-row.is-selected {
-  background-color: rgba(138, 180, 248, 0.18) !important;
-}
-
-.avatar-select-container {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  cursor: pointer;
-  border-radius: 50%;
-}
-
-.avatar-select-container .avatar-circle {
-  position: absolute;
-  inset: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  z-index: 1;
-}
-
-.avatar-select-container .contact-select-checkbox {
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.8);
-  transition: opacity 0.15s ease, transform 0.15s ease, background-color 0.12s ease;
-  border: 2px solid var(--google-text-secondary);
-  background-color: var(--surface-base);
-  z-index: 2;
-  box-sizing: border-box;
-}
-
-.avatar-select-container .contact-select-checkbox .material-symbols-outlined {
-  font-size: 15px;
-  font-weight: bold;
-  line-height: 1;
-  color: #ffffff;
-}
-
-/* On hover of row or container, hide avatar and show checkbox */
-.contact-row:hover .avatar-select-container .avatar-circle,
-.avatar-select-container:hover .avatar-circle,
-.avatar-select-container:focus-visible .avatar-circle {
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.85);
-}
-
-.contact-row:hover .avatar-select-container .contact-select-checkbox,
-.avatar-select-container:hover .contact-select-checkbox,
-.avatar-select-container:focus-visible .contact-select-checkbox {
-  opacity: 1;
-  pointer-events: auto;
-  transform: scale(1);
-}
-
-/* When contact is selected, keep avatar hidden and checkbox active/checked */
-.contact-row.is-selected .avatar-select-container .avatar-circle {
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.85);
-}
-
-.contact-row.is-selected .avatar-select-container .contact-select-checkbox,
-.avatar-select-container .contact-select-checkbox.checked {
-  opacity: 1;
-  pointer-events: auto;
-  transform: scale(1);
-  background-color: var(--google-blue);
-  border-color: var(--google-blue);
-  color: #ffffff;
-}
 
 /* Dark Mode Harmonization */
 :root[data-theme="dark"] .filter-contacts-bar {
   background-color: var(--surface-base);
-  border-color: var(--google-border);
 }
 
-:root[data-theme="dark"] .filter-chip {
-  background-color: rgba(26, 115, 232, 0.18);
-  border-color: rgba(138, 180, 248, 0.45);
-  color: var(--google-blue);
-}
-
-:root[data-theme="dark"] .filter-chip-remove {
-  color: var(--google-blue);
-}
-
-:root[data-theme="dark"] .filter-clear-all-btn {
-  background-color: var(--google-surface);
-  border-color: var(--google-border);
+:root[data-theme="dark"] .filter-bar-lead,
+:root[data-theme="dark"] .filter-bar-lead .filter-lead-icon,
+:root[data-theme="dark"] .filter-bar-lead .filter-lead-label {
   color: var(--google-text-secondary);
 }
 
-:root[data-theme="dark"] .filter-clear-all-btn:hover {
-  background-color: var(--google-surface-hover);
-  color: #f28b82;
-  border-color: #f28b82;
+:root[data-theme="dark"] .filter-chip {
+  background-color: rgba(138, 180, 248, 0.14);
+  border-color: rgba(138, 180, 248, 0.35);
+  color: #8ab4f8;
+}
+
+:root[data-theme="dark"] .filter-chip-icon {
+  color: #8ab4f8;
+}
+
+:root[data-theme="dark"] .filter-chip-remove {
+  color: #8ab4f8;
+}
+
+:root[data-theme="dark"] .filter-chip-remove:hover {
+  background-color: rgba(138, 180, 248, 0.22);
 }
 
 :root[data-theme="dark"] .match-mode-segmented-control {
-  background-color: var(--google-surface);
+  background-color: var(--surface-base);
   border-color: var(--google-border);
+}
+
+:root[data-theme="dark"] .match-mode-segmented-control .segmented-btn.active {
+  background-color: rgba(138, 180, 248, 0.18);
+  color: #8ab4f8;
+}
+
+:root[data-theme="dark"] .match-mode-segmented-control .segmented-check {
+  color: #8ab4f8;
+}
+
+:root[data-theme="dark"] .filter-clear-all-btn {
+  color: #8ab4f8;
+}
+
+:root[data-theme="dark"] .filter-clear-all-btn:hover {
+  background-color: rgba(138, 180, 248, 0.12);
 }
 
 :root[data-theme="dark"] .table-selection-row {
@@ -5604,20 +5599,57 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
 }
 
 /* Compact Density Harmonization */
+:root[data-density="compact"] .view-header.has-filter-bar {
+  padding-bottom: 2px;
+}
+
 :root[data-density="compact"] .filter-contacts-bar {
-  padding: 6px 16px;
+  padding: 0 16px 8px 16px;
   gap: 8px;
 }
 
 :root[data-density="compact"] .filter-chip {
-  height: 24px;
-  padding: 0 6px 0 8px;
-  font-size: 11px;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  font-size: 11.5px;
+  border-radius: 6px;
+}
+
+:root[data-density="compact"] .filter-chip-icon {
+  font-size: 14px;
+}
+
+:root[data-density="compact"] .filter-chip-remove {
+  width: 18px;
+  height: 18px;
+}
+
+:root[data-density="compact"] .filter-chip-remove span {
+  font-size: 13px;
+}
+
+:root[data-density="compact"] .match-mode-segmented-control {
+  height: 26px;
+  border-radius: 6px;
 }
 
 :root[data-density="compact"] .match-mode-segmented-control .segmented-btn {
-  padding: 2px 8px;
-  font-size: 10.5px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+:root[data-density="compact"] .match-mode-segmented-control .segmented-check {
+  font-size: 12px;
+}
+
+:root[data-density="compact"] .filter-clear-all-btn {
+  height: 26px;
+  padding: 0 6px;
+  font-size: 11.5px;
+}
+
+:root[data-density="compact"] .filter-clear-all-btn span.material-symbols-outlined {
+  font-size: 14px;
 }
 
 :root[data-density="compact"] .table-selection-row {
