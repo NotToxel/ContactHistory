@@ -8,6 +8,7 @@ export type CaptureOutcome = { capture: Capture; is_new: boolean; change_count: 
 export type Contact = { resource_name: string; display_name: string; payload: Record<string, unknown>; version: number };
 export type GroupRow = { resource_name: string; name: string; member_count: number | null };
 export type ContactHistoryEntry = { sequence: number; committed_at: string; version: number; before: Record<string, unknown> | null; after: Record<string, unknown> | null };
+export type ContactSnapshotEntry = { sequence: number; committed_at: string; version: number };
 export type MediaView = { source_url: string; status: string; data_url: string | null; retrieved_at: string | null };
 export type DueStatus = { due: boolean; next_due_at: string | null };
 export type ScheduleConfig = {
@@ -48,6 +49,7 @@ export const listenPhotoExportProgress = (cb: (progress: PhotoExportProgress) =>
 export const api = {
   contactHistory: (accountId: string, resourceName: string) => invoke<ContactHistoryEntry[]>('contact_history', { accountId, resourceName }),
   contactAtSnapshot: (accountId: string, sequence: number, resourceName: string) => invoke<Contact | null>('contact_at_snapshot', { accountId, sequence, resourceName }),
+  contactSnapshots: (accountId: string, resourceName: string) => invoke<ContactSnapshotEntry[]>('contact_snapshots', { accountId, resourceName }),
   accounts: () => invoke<Account[]>('list_accounts'),
   profile: (accountId: string) => invoke<AccountProfile>('account_profile', { accountId }),
   connect: (clientId: string, clientSecret: string) => invoke<Account>('connect_google', { clientId, clientSecret }),
@@ -93,6 +95,10 @@ export const api = {
       format,
       includeDefault,
     }),
+  exportSinglePhoto: (accountId: string, sequence: number, photoUrl: string, destination: string, size: number | null) =>
+    invoke<string>('export_single_photo', { accountId, sequence, photoUrl, destination, size }),
+  singlePhotoQuality: (accountId: string, sequence: number, photoUrl: string) =>
+    invoke<PhotoQualityInfo>('single_photo_quality', { accountId, sequence, photoUrl }),
   backupAccount: (accountId: string, destination: string) => invoke<void>('backup_account', { accountId, destination }),
   restoreArchive: (source: string) => invoke<Account>('restore_archive', { source }),
   openExternalUrl: (url: string) => invoke<void>('open_external_url', { url }),
@@ -101,6 +107,13 @@ export const api = {
   winClose: () => invoke<void>('win_close'),
   winIsMaximized: () => invoke<boolean>('win_is_maximized'),
 };
+
+export interface PhotoQualityInfo {
+  width: number;
+  height: number;
+  resizable: boolean;
+  extension: string;
+}
 
 export interface PhotoExportProgress {
   current: number;

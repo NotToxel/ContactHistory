@@ -727,6 +727,29 @@ pub fn contact_at_snapshot(store: &Store, account: &Account, sequence: i64, reso
     }).transpose()
 }
 
+#[derive(Clone, Serialize)]
+pub struct ContactSnapshotEntry {
+    pub sequence: i64,
+    pub committed_at: String,
+    pub version: i64,
+}
+
+pub fn contact_snapshots(store: &Store, account: &Account, resource: &str) -> Result<Vec<ContactSnapshotEntry>> {
+    let db = store.open_db(&account.id)?;
+    store.verify(account, &db)?;
+    let mut stmt = db.prepare(
+        "SELECT c.capture_sequence,p.committed_at,r.version FROM capture_contacts c \
+         JOIN contact_identities i ON i.id=c.contact_id \
+         JOIN contact_revisions r ON r.id=c.revision_id \
+         JOIN captures p ON p.sequence=c.capture_sequence \
+         WHERE i.resource_name=?1 AND r.kind='present' ORDER BY c.capture_sequence DESC"
+    )?;
+    let entries = stmt.query_map(params![resource], |row| Ok(ContactSnapshotEntry {
+        sequence: row.get(0)?, committed_at: row.get(1)?, version: row.get(2)?,
+    }))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(entries)
+}
+
 #[derive(Clone, serde::Serialize)]
 pub struct ChangelogEntry {
     pub capture_sequence: i64,

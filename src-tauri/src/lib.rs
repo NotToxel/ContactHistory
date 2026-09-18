@@ -182,6 +182,13 @@ fn contact_at_snapshot(account_id: String, sequence: i64, resource_name: String)
 }
 
 #[tauri::command]
+fn contact_snapshots(account_id: String, resource_name: String) -> Result<Vec<capture::ContactSnapshotEntry>, String> {
+    let store = store()?;
+    let account = error(store.account(&account_id))?;
+    error(capture::contact_snapshots(&store, &account, &resource_name))
+}
+
+#[tauri::command]
 fn account_profile(account_id: String) -> Result<google::AccountProfile, String> {
     let store = store()?;
     let account = error(store.account(&account_id))?;
@@ -343,6 +350,38 @@ async fn export_photos(
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+async fn export_single_photo(
+    account_id: String,
+    sequence: i64,
+    photo_url: String,
+    destination: String,
+    size: Option<u32>,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(photo_export::export_single_photo(
+            &store, &account, sequence, &photo_url, std::path::Path::new(&destination), size,
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn single_photo_quality(
+    account_id: String,
+    sequence: i64,
+    photo_url: String,
+) -> Result<photo_export::PhotoQualityInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(photo_export::single_photo_quality(&store, &account, sequence, &photo_url))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
 async fn backup_account(account_id: String, destination: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         let store = store()?;
@@ -434,6 +473,7 @@ pub fn run() {
             list_avatars,
             contact_history,
             contact_at_snapshot,
+            contact_snapshots,
             account_profile,
             account_health,
             disconnect_account,
@@ -448,6 +488,8 @@ pub fn run() {
             disable_schedule,
             export_capture,
             export_photos,
+            export_single_photo,
+            single_photo_quality,
             import_csv,
             backup_account,
             restore_archive,

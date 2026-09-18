@@ -3,7 +3,8 @@ use crate::core::{
     storage::{Account, Store},
 };
 use anyhow::{bail, Context, Result};
-use image::ImageReader;
+use image::{GenericImageView, ImageReader};
+use rusqlite::OptionalExtension;
 use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::Value;
@@ -35,6 +36,14 @@ pub struct PhotoExportResult {
     pub skipped_no_photo: usize,
     pub skipped_default: usize,
     pub destination: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PhotoQualityInfo {
+    pub width: u32,
+    pub height: u32,
+    pub resizable: bool,
+    pub extension: String,
 }
 
 pub fn contact_display_name(contact: &Value) -> String {
@@ -509,6 +518,126 @@ where
         skipped_default,
         destination: destination.to_string_lossy().to_string(),
     })
+}
+
+fn load_single_photo(
+    store: &Store,
+    account: &Account,
+    sequence: i64,
+    photo_url: &str,
+) -> Result<(Vec<u8>, &'static str)> {
+    let db = store.open_db(&account.id)?;
+    store.verify(account, &db)?;
+    let cached: Option<(String, String)> = db.query_row(
+        "SELECT COALESCE(o.sha256, j.sha256), m.mime \
+         FROM captures c \
+         JOIN observation_media o ON o.run_id = c.run_id \
+         LEFT JOIN media_jobs j ON j.run_id = o.run_id AND j.resource_name = o.resource_name AND j.source_url = o.source_url AND j.status = 'available' \
+         JOIN media_objects m ON m.sha256 = COALESCE(o.sha256, j.sha256) \
+         WHERE c.sequence = ?1 AND o.source_url = ?2 AND (o.status = 'available' OR j.status = 'available') \
+         LIMIT 1",
+        rusqlite::params![sequence, photo_url],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).optional()?;
+    let cached = cached.map(|(hash, mime)| {
+        let ext = match mime.as_str() {
+            "image/png" => "png",
+            "image/webp" => "webp",
+            "image/gif" => "gif",
+            _ => "jpg",
+        };
+        (hash, ext)
+    });
+    fetch_photo_bytes(
+        &media::media_client().ok(), store, account, photo_url,
+        cached.as_ref().map(|(hash, ext)| (hash.as_str(), *ext)),
+    )
+}
+
+pub fn single_photo_quality(
+    store: &Store,
+    account: &Account,
+    sequence: i64,
+    photo_url: &str,
+) -> Result<PhotoQualityInfo> {
+    let (bytes, ext) = load_single_photo(store, account, sequence, photo_url)?;
+    let image = image::load_from_memory(&bytes)?;
+    let (width, height) = image.dimensions();
+    Ok(PhotoQualityInfo { width, height, resizable: ext != "gif", extension: ext.to_string() })
+}
+
+pub fn export_single_photo(
+    store: &Store,
+    account: &Account,
+    sequence: i64,
+    photo_url: &str,
+    destination: &Path,
+    size: Option<u32>,
+) -> Result<String> {
+    let (mut bytes, ext) = load_single_photo(store, account, sequence, photo_url)?;
+    let chosen_ext = destination.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase();
+    let output_ext = match chosen_ext.as_str() {
+        "jpg" | "jpeg" => "jpg",
+        "png" => "png",
+        "webp" => "webp",
+        "gif" if ext == "gif" && size.is_none() => "gif",
+        "" => ext,
+        _ => bail!("unsupported output format"),
+    };
+    if ext == "gif" && size.is_some() {
+        bail!("animated GIF photos can only be downloaded at original size");
+    }
+    if let Some(target) = size {
+        if target == 0 {
+            bail!("this photo cannot be exported at the selected size");
+        }
+        let image = image::load_from_memory(&bytes)?;
+        let (width, height) = image.dimensions();
+        if target > width.max(height) {
+            bail!("selected size exceeds the photo's available resolution");
+        }
+    }
+    if size.is_some() || output_ext != ext {
+        let image = image::load_from_memory(&bytes)?;
+        let resized = if let Some(target) = size {
+            image.resize(target, target, image::imageops::FilterType::Lanczos3)
+        } else {
+            image
+        };
+        let mut output = Cursor::new(Vec::new());
+        if output_ext == "jpg" {
+            let rgba = resized.to_rgba8();
+            let mut white = image::RgbaImage::from_pixel(rgba.width(), rgba.height(), image::Rgba([255, 255, 255, 255]));
+            image::imageops::overlay(&mut white, &rgba, 0, 0);
+            let rgb = image::DynamicImage::ImageRgba8(white).to_rgb8();
+            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut output, 92);
+            image::DynamicImage::ImageRgb8(rgb).write_with_encoder(encoder)?;
+        } else {
+            let format = match output_ext {
+                "png" => image::ImageFormat::Png,
+                "webp" => image::ImageFormat::WebP,
+                _ => bail!("unsupported image format"),
+            };
+            resized.write_to(&mut output, format)?;
+        }
+        bytes = output.into_inner();
+    }
+    let path = match destination.extension().and_then(|value| value.to_str()) {
+        Some("jpg" | "jpeg" | "png" | "webp" | "gif") => destination.to_path_buf(),
+        _ => destination.with_file_name(format!(
+            "{}.{}",
+            destination.file_name().and_then(|value| value.to_str()).context("invalid filename")?,
+            output_ext,
+        )),
+    };
+    if path == destination {
+        fs::write(&path, bytes)?;
+    } else {
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&path)
+            .with_context(|| format!("cannot create {} (choose another filename if it already exists)", path.display()))?;
+        file.write_all(&bytes)?;
+    }
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[cfg(test)]

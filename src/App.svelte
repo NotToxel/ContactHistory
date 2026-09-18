@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import brandLogo from './assets/contact-history.png';
   import { version as appVersion } from '../package.json';
-  import { readPreferences, savePreferences, applyPreferences, getEffectiveCountry, type Preferences } from './lib/preferences';
+  import { readPreferences, savePreferences, applyPreferences, getEffectiveCountry, formatBirthdayDate, type Preferences, type BirthdayFormat } from './lib/preferences';
   import ToggleSwitch from './lib/ToggleSwitch.svelte';
   import CustomSelect, { type SelectOption } from './lib/CustomSelect.svelte';
   import SnapshotSelect from './lib/SnapshotSelect.svelte';
@@ -23,12 +23,38 @@
     run_daily: true,
   });
 
+  let activeChipTooltip = $state<{ text: string; x: number; y: number } | null>(null);
+
+  function showChipTooltip(e: MouseEvent | FocusEvent, text: string) {
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    activeChipTooltip = {
+      text,
+      x: rect.left + rect.width / 2,
+      y: rect.top - 6,
+    };
+  }
+
+  function hideChipTooltip() {
+    activeChipTooltip = null;
+  }
+
   const effectiveCountry = $derived(getEffectiveCountry(preferences));
   const countryOptions: SelectOption[] = getCountryOptions();
 
   const densityOptions: SelectOption[] = [
     { value: 'comfortable', label: 'Comfortable', sublabel: 'Spacious contact rows' },
     { value: 'compact', label: 'Compact', sublabel: 'Dense table rows' },
+  ];
+
+  const birthdayFormatOptions: SelectOption[] = [
+    { value: 'day-month-year', label: '15 January 1990', sublabel: 'Day Month Year (Long)' },
+    { value: 'month-day-year', label: 'January 15, 1990', sublabel: 'Month Day, Year (US Long)' },
+    { value: 'short-day-month', label: '15 Jan 1990', sublabel: 'Day Mon Year (Abbreviated)' },
+    { value: 'short-month-day', label: 'Jan 15, 1990', sublabel: 'Mon Day, Year (US Abbreviated)' },
+    { value: 'iso', label: '1990-01-15', sublabel: 'YYYY-MM-DD (ISO 8601)' },
+    { value: 'eu-numeric', label: '15/01/1990', sublabel: 'DD/MM/YYYY (Day first)' },
+    { value: 'us-numeric', label: '01/15/1990', sublabel: 'MM/DD/YYYY (Month first)' },
   ];
 
   const sortFieldOptions: SelectOption[] = [
@@ -78,7 +104,11 @@
   import FieldChanges from './lib/FieldChanges.svelte';
   import ContactPayloadViewer from './lib/ContactPayloadViewer.svelte';
   import { computeContactDiff, extractDisplayName } from './lib/diff';
-  import { generateContactCsv } from './lib/export-csv';
+  import {
+    generateContactCsv,
+    generateMultipleContactsCsv,
+    generateMultipleContactsVcf,
+  } from './lib/export-csv';
   import ContextMenu from './lib/ContextMenu.svelte';
   import { openContextMenu, type ContextMenuItem } from './lib/context-menu.svelte';
   import {
@@ -153,6 +183,13 @@
   let searchDropdownOpen = $state(false);
   let searchActiveIndex = $state(0);
   let contacts: Contact[] = $state([]);
+  let selectedContactKeys = $state<string[]>([]);
+  let showSelectionMenu = $state(false);
+  let showDownloadMenu = $state(false);
+  const selectedCount = $derived(selectedContactKeys.length);
+  const isAllSelected = $derived(contacts.length > 0 && contacts.every((c) => selectedContactKeys.includes(c.resource_name)));
+  const isIndeterminate = $derived(selectedContactKeys.length > 0 && !isAllSelected);
+  const selectedContactsList = $derived(contacts.filter((c) => selectedContactKeys.includes(c.resource_name)));
   let detail: Contact | undefined = $state();
   let media: MediaView[] = $state([]);
   let due: DueStatus | undefined = $state();
@@ -178,6 +215,7 @@
   let showRawDataModal = $state(false);
   let showDetailMenu = $state(false);
   let showStickyName = $state(false);
+  let isScrolled = $state(false);
   let detailViewEl = $state<HTMLElement | null>(null);
   let topNavEl = $state<HTMLElement | null>(null);
   let heroAvatarEl = $state<HTMLElement | null>(null);
@@ -781,16 +819,7 @@
   function getBirthday(payload: Record<string, unknown>): string {
     const bdays = (payload.birthdays as Array<any>) || [];
     if (!bdays.length) return '';
-    const date = bdays[0]?.date;
-    if (!date) return bdays[0]?.text || '';
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
-    ];
-    const m = date.month ? months[date.month - 1] : '';
-    const d = date.day || '';
-    const y = date.year || '';
-    return [d, m, y].filter(Boolean).join(' ');
+    return formatBirthdayDate(bdays[0]?.date, bdays[0]?.text, preferences.birthdayFormat);
   }
 
   interface ContactLabelItem {
@@ -906,6 +935,10 @@
 
   function getAddressMapsUrl(addr: { lines: string[]; copyValue: string }): string {
     return `https://maps.google.com/?q=${encodeURIComponent(addr.copyValue)}`;
+  }
+
+  function getMapsUrlFromAddress(address: string): string {
+    return `https://maps.google.com/?q=${encodeURIComponent(address)}`;
   }
 
   function formatCaptureTime(timeStr?: string): string {
@@ -1242,11 +1275,23 @@
     if (!target.closest('.detail-menu-container')) {
       showDetailMenu = false;
     }
+    if (!target.closest('.selection-box-wrapper')) {
+      showSelectionMenu = false;
+    }
+    if (!target.closest('.selection-download-wrapper')) {
+      showDownloadMenu = false;
+    }
   }
 
   function updateStickyState() {
-    if (!heroAvatarEl || !topNavEl) {
+    if (!detailViewEl || !topNavEl) {
+      isScrolled = false;
       showStickyName = false;
+      return;
+    }
+    isScrolled = detailViewEl.scrollTop > 16;
+    if (!heroAvatarEl) {
+      showStickyName = isScrolled;
       return;
     }
     const avatarRect = heroAvatarEl.getBoundingClientRect();
@@ -1428,6 +1473,7 @@
     previewBusy = false;
     detail = contact;
     showStickyName = false;
+    isScrolled = false;
     showDetailMenu = false;
     if (detailViewEl) {
       detailViewEl.scrollTop = 0;
@@ -1919,7 +1965,106 @@
       }
     } catch (e) {
       error = String(e);
+  }
+
+  function toggleContactSelection(resName: string, event?: MouseEvent) {
+    if (event) {
+      event.stopPropagation();
     }
+    if (selectedContactKeys.includes(resName)) {
+      selectedContactKeys = selectedContactKeys.filter((k) => k !== resName);
+    } else {
+      selectedContactKeys = [...selectedContactKeys, resName];
+    }
+  }
+
+  function selectAllVisible() {
+    selectedContactKeys = contacts.map((c) => c.resource_name);
+  }
+
+  function clearContactSelection() {
+    selectedContactKeys = [];
+  }
+
+  function toggleSelectAll() {
+    if (selectedContactKeys.length > 0) {
+      clearContactSelection();
+    } else {
+      selectAllVisible();
+    }
+  }
+
+  function triggerFileDownload(content: string, filename: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function downloadSelectedCsv() {
+    if (selectedContactsList.length === 0) return;
+    const groupMap = new Map<string, string>();
+    for (const g of groups) {
+      groupMap.set(g.resource_name, g.name);
+    }
+    const csvContent = generateMultipleContactsCsv(selectedContactsList, groupMap);
+    const filename = `google-contacts-selected-${selectedContactsList.length}.csv`;
+    triggerFileDownload(csvContent, filename, 'text/csv;charset=utf-8;');
+  }
+
+  function downloadSelectedVcf() {
+    if (selectedContactsList.length === 0) return;
+    const vcfContent = generateMultipleContactsVcf(selectedContactsList);
+    const filename = `contacts-selected-${selectedContactsList.length}.vcf`;
+    triggerFileDownload(vcfContent, filename, 'text/vcard;charset=utf-8;');
+  }
+
+  function downloadSelectedJson() {
+    if (selectedContactsList.length === 0) return;
+    const jsonContent = JSON.stringify(
+      selectedContactsList.map((c) => ({
+        resource_name: c.resource_name,
+        display_name: c.display_name,
+        version: c.version,
+        payload: c.payload,
+      })),
+      null,
+      2
+    );
+    const filename = `contacts-selected-${selectedContactsList.length}.json`;
+    triggerFileDownload(jsonContent, filename, 'application/json;charset=utf-8;');
+  }
+
+  function sendEmailToSelected() {
+    if (selectedContactsList.length === 0) return;
+    const emailSet = new Set<string>();
+    for (const c of selectedContactsList) {
+      const p = (c.payload || {}) as Record<string, any>;
+      const ems = (p.emailAddresses as Array<any>) || (p.emails as Array<any>) || [];
+      for (const em of ems) {
+        const val = typeof em === 'string' ? em : em?.value;
+        if (val && typeof val === 'string' && val.includes('@')) {
+          emailSet.add(val.trim());
+        }
+      }
+    }
+    const emailList = Array.from(emailSet);
+    if (emailList.length === 0) {
+      toastMessage = 'Selected contacts do not have any email addresses';
+      setTimeout(() => {
+        if (toastMessage === 'Selected contacts do not have any email addresses') {
+          toastMessage = '';
+        }
+      }, 3000);
+      return;
+    }
+    const mailtoUrl = `mailto:${encodeURIComponent(emailList.join(','))}`;
+    window.open(mailtoUrl, '_blank');
   }
 
   function openPhotoExport() {
@@ -2073,8 +2218,14 @@
     }
     if (event.key === 'Escape') {
       showSnapshotDropdown = false;
+      showSelectionMenu = false;
+      showDownloadMenu = false;
       if (searchDropdownOpen) {
         searchDropdownOpen = false;
+        return;
+      }
+      if (selectedContactKeys.length > 0) {
+        clearContactSelection();
         return;
       }
       if (document.activeElement === searchInputEl || search) {
@@ -3322,7 +3473,7 @@
 
       <!-- Labels Section -->
       {#if groups.length > 0}
-        <div class="sidebar-section">
+        <div class="sidebar-section" class:has-selected-labels={selectedGroups.length > 0}>
           <div class="sidebar-section-header sidebar-section-header-row">
             <div class="sidebar-header-left">
               <span>Labels</span>
@@ -3350,6 +3501,7 @@
             <div
               class="nav-item label-nav-item"
               class:active={pageView === 'contacts' && isSelected}
+              class:is-selected={isSelected}
               data-label-res={group.resource_name}
               data-label-name={group.name}
               onclick={() => { toggleLabelFilter(group.resource_name); navigate('contacts'); }}
@@ -3401,7 +3553,7 @@
             <!-- ── Top Navigation Row (transforms into a persistent tab when scrolled) ── -->
             <div
               class="detail-top-nav"
-              class:is-scrolled={showStickyName}
+              class:is-scrolled={isScrolled}
               bind:this={topNavEl}
             >
               <div class="detail-top-nav-left">
@@ -4120,84 +4272,15 @@
           </div>
         {:else}
           <!-- Main Contacts Table List View (Screenshots 1 & 3) -->
-          <div class="view-header" class:has-multi-filter={selectedGroups.length > 0}>
+          <div class="view-header">
             <div class="view-header-main">
               <h1 class="view-title">
                 {#if selectedGroups.length === 0}
                   Contacts ({capture ? capture.contact_count : contacts.length})
-                {:else if selectedGroups.length === 1}
-                  {@const singleGroup = activeGroups[0]}
-                  <span>{singleGroup?.name || '1 Label'} ({contacts.length})</span>
-                  <button
-                    type="button"
-                    class="filter-clear-badge"
-                    onclick={clearLabelFilter}
-                    title="Clear label filter (show all contacts)"
-                    aria-label="Clear label filter"
-                  >
-                    <span class="material-symbols-outlined" style="font-size: 15px;">close</span>
-                    <span>Clear filter</span>
-                  </button>
                 {:else}
-                  <span>Filtered Contacts ({contacts.length})</span>
-                  <button
-                    type="button"
-                    class="filter-clear-badge"
-                    onclick={clearLabelFilter}
-                    title="Clear all {selectedGroups.length} label filters"
-                    aria-label="Clear all label filters"
-                  >
-                    <span class="material-symbols-outlined" style="font-size: 15px;">close</span>
-                    <span>Clear all ({selectedGroups.length})</span>
-                  </button>
+                  Filtered Contacts ({contacts.length})
                 {/if}
               </h1>
-
-              {#if selectedGroups.length > 1}
-                <div class="multi-label-bar">
-                  <div class="multi-label-chips">
-                    {#each selectedGroups as resName (resName)}
-                      {@const grp = groups.find((g) => g.resource_name === resName)}
-                      <span class="filter-pill">
-                        <span class="material-symbols-outlined filter-pill-icon">label</span>
-                        <span class="filter-pill-text">{grp?.name || resName}</span>
-                        <button
-                          type="button"
-                          class="filter-pill-remove"
-                          onclick={() => toggleLabelFilter(resName)}
-                          title="Remove {grp?.name || 'label'} from filter"
-                          aria-label="Remove {grp?.name || 'label'} from filter"
-                        >
-                          <span class="material-symbols-outlined">close</span>
-                        </button>
-                      </span>
-                    {/each}
-                  </div>
-
-                  <div class="multi-label-controls">
-                    <div class="match-mode-selector" role="radiogroup" aria-label="Label match mode">
-                      <button
-                        type="button"
-                        class="match-mode-btn"
-                        class:active={labelMatchMode === 'any'}
-                        onclick={() => { labelMatchMode = 'any'; updateDisplayedContacts(); }}
-                        title="Show contacts matching ANY selected label (OR logic)"
-                      >
-                        Match Any (OR)
-                      </button>
-                      <button
-                        type="button"
-                        class="match-mode-btn"
-                        class:active={labelMatchMode === 'all'}
-                        onclick={() => { labelMatchMode = 'all'; updateDisplayedContacts(); }}
-                        title="Show contacts matching ALL selected labels (AND logic)"
-                      >
-                        Match All (AND)
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              {/if}
             </div>
             <div class="view-header-actions">
               <button class="icon-btn" onclick={() => window.print()} data-tooltip="Print" aria-label="Print">
@@ -4232,6 +4315,70 @@
               </button>
             </div>
           </div>
+
+          {#if selectedGroups.length > 0}
+            <div class="filter-contacts-bar" role="region" aria-label="Active label filters">
+              <div class="filter-bar-left">
+                <div class="filter-bar-lead">
+                  <span class="material-symbols-outlined filter-funnel-icon">filter_alt</span>
+                  <span class="filter-bar-title">Filter by label{selectedGroups.length > 1 ? 's' : ''} ({selectedGroups.length}):</span>
+                </div>
+                <div class="filter-chips-list">
+                  {#each selectedGroups as resName (resName)}
+                    {@const grp = groups.find((g) => g.resource_name === resName)}
+                    <div class="filter-chip">
+                      <span class="material-symbols-outlined filter-chip-icon">label</span>
+                      <span class="filter-chip-text">{grp?.name || resName}</span>
+                      <button
+                        type="button"
+                        class="filter-chip-remove"
+                        onclick={() => toggleLabelFilter(resName)}
+                        title="Remove {grp?.name || 'label'} filter"
+                        aria-label="Remove {grp?.name || 'label'} filter"
+                      >
+                        <span class="material-symbols-outlined">close</span>
+                      </button>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+
+              <div class="filter-bar-right">
+                {#if selectedGroups.length > 1}
+                  <div class="match-mode-segmented-control" role="radiogroup" aria-label="Label match mode">
+                    <button
+                      type="button"
+                      class="segmented-btn"
+                      class:active={labelMatchMode === 'any'}
+                      onclick={() => { labelMatchMode = 'any'; updateDisplayedContacts(); }}
+                      title="Show contacts with ANY selected label (OR)"
+                    >
+                      Any label (OR)
+                    </button>
+                    <button
+                      type="button"
+                      class="segmented-btn"
+                      class:active={labelMatchMode === 'all'}
+                      onclick={() => { labelMatchMode = 'all'; updateDisplayedContacts(); }}
+                      title="Show contacts with ALL selected labels (AND)"
+                    >
+                      All labels (AND)
+                    </button>
+                  </div>
+                {/if}
+                <button
+                  type="button"
+                  class="filter-clear-all-btn"
+                  onclick={clearLabelFilter}
+                  title="Clear all label filters"
+                  aria-label="Clear all label filters"
+                >
+                  <span class="material-symbols-outlined">filter_alt_off</span>
+                  <span>Clear all</span>
+                </button>
+              </div>
+            </div>
+          {/if}
 
           <div class="table-scroll-container">
             <table class="contacts-table">

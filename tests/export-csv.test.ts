@@ -4,6 +4,9 @@ import {
   formatGoogleCsvBirthday,
   resolveGoogleCsvLabels,
   generateContactCsv,
+  generateMultipleContactsCsv,
+  contactToVCard,
+  generateMultipleContactsVcf,
 } from '../src/lib/export-csv';
 import type { Contact } from '../src/lib/ipc';
 
@@ -128,5 +131,63 @@ describe('export-csv', () => {
     expect(csv).toContain('Email 1 - Label');
     expect(csv).toContain('Phone 1 - Label');
     expect(csv).toContain('Address 1 - Label');
+  });
+
+  it('generateMultipleContactsCsv generates unified CSV for multiple contacts', () => {
+    const c1: Contact = {
+      resource_name: 'people/c1',
+      display_name: 'Alice Smith',
+      version: 1,
+      payload: {
+        names: [{ givenName: 'Alice', familyName: 'Smith' }],
+        emailAddresses: [{ value: 'alice@example.com', type: 'Work' }],
+      },
+    };
+    const c2: Contact = {
+      resource_name: 'people/c2',
+      display_name: 'Bob Jones',
+      version: 1,
+      payload: {
+        names: [{ givenName: 'Bob', familyName: 'Jones' }],
+        emailAddresses: [
+          { value: 'bob1@example.com', type: 'Work' },
+          { value: 'bob2@example.com', type: 'Home' },
+        ],
+      },
+    };
+
+    const csv = generateMultipleContactsCsv([c1, c2]);
+    expect(csv).toContain('Alice');
+    expect(csv).toContain('Bob');
+    // Header should account for 2 emails because Bob has 2
+    expect(csv).toContain('Email 1 - Value,Email 2 - Label,Email 2 - Value');
+  });
+
+  it('contactToVCard and generateMultipleContactsVcf produce valid vCard 3.0', () => {
+    const contact: Contact = {
+      resource_name: 'people/c1',
+      display_name: 'Carol Danvers',
+      version: 1,
+      payload: {
+        names: [{ givenName: 'Carol', familyName: 'Danvers' }],
+        emailAddresses: [{ value: 'carol@avengers.org', type: 'Work' }],
+        phoneNumbers: [{ value: '+1-555-9999', type: 'Cell' }],
+        organizations: [{ name: 'Avengers', title: 'Captain' }],
+      },
+    };
+
+    const vcf = contactToVCard(contact);
+    expect(vcf).toContain('BEGIN:VCARD');
+    expect(vcf).toContain('VERSION:3.0');
+    expect(vcf).toContain('FN:Carol Danvers');
+    expect(vcf).toContain('N:Danvers;Carol;;;');
+    expect(vcf).toContain('EMAIL;TYPE=WORK:carol@avengers.org');
+    expect(vcf).toContain('TEL;TYPE=CELL:+1-555-9999');
+    expect(vcf).toContain('ORG:Avengers');
+    expect(vcf).toContain('TITLE:Captain');
+    expect(vcf).toContain('END:VCARD');
+
+    const multi = generateMultipleContactsVcf([contact, contact]);
+    expect(multi.split('BEGIN:VCARD').length - 1).toBe(2);
   });
 });
