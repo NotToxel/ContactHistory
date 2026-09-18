@@ -148,6 +148,7 @@
     type ContactHistoryEntry,
     type PhotoExportProgress,
     type PhotoExportResult,
+    type PhotoQualityInfo,
   } from './lib/ipc';
 
   const appWindow = getCurrentWindow();
@@ -254,6 +255,13 @@
   let showSettingsModal = $state(false);
   let showRawDataModal = $state(false);
   let showDetailMenu = $state(false);
+  let showPhotoQualityMenu = $state(false);
+  let photoQualityInfo: PhotoQualityInfo | null = $state(null);
+  let photoQualityLoading = $state(false);
+  let photoQualityError = $state('');
+  let photoQualitySelection: number | null = $state(null);
+  let photoDownloadBusy = $state(false);
+  let photoQualityRequest = 0;
   let showStickyName = $state(false);
   let isScrolled = $state(false);
   let detailViewEl = $state<HTMLElement | null>(null);
@@ -264,7 +272,6 @@
   let selectedPhotoUrl: string | null = $state(null);
   let showPhotoExportModal = $state(false);
   let photoExportFormat = $state<'folder' | 'zip'>('folder');
-  let photoExportIncludeDefault = $state(false);
   let photoExportBusy = $state(false);
   let photoExportProgress = $state<PhotoExportProgress | null>(null);
   let photoExportResult = $state<PhotoExportResult | null>(null);
@@ -1406,6 +1413,7 @@
     }
     if (!target.closest('.detail-menu-container')) {
       showDetailMenu = false;
+      showPhotoQualityMenu = false;
     }
     if (!target.closest('.selection-box-wrapper')) {
       showSelectionMenu = false;
@@ -2268,6 +2276,78 @@
     photoExportError = '';
   }
 
+  function detailPhotoUrl(): string | null {
+    if (!detail) return null;
+    const photos = getContactPhotos(detail, media, avatarMap);
+    const photo = photos.find((item) => item.url === selectedPhotoUrl) ?? photos[0];
+    if (!photo) return null;
+    if (/^https?:\/\//.test(photo.url) || photo.url.startsWith('data:image/')) return photo.url;
+    return photo.displayUrl.startsWith('data:image/') ? photo.displayUrl : null;
+  }
+
+  async function openPhotoQualityMenu() {
+    showPhotoQualityMenu = !showPhotoQualityMenu;
+    if (!showPhotoQualityMenu || !selected || !capture) return;
+    const photoUrl = detailPhotoUrl();
+    if (!photoUrl) return;
+    const request = ++photoQualityRequest;
+    photoQualityInfo = null;
+    photoQualitySelection = null;
+    photoQualityError = '';
+    photoQualityLoading = true;
+    try {
+      const info = await api.singlePhotoQuality(selected.id, previewSequence ?? capture.sequence, photoUrl);
+      if (request === photoQualityRequest && showPhotoQualityMenu) {
+        photoQualityInfo = info;
+        photoQualitySelection = info.resizable && Math.max(info.width, info.height) >= 512 ? 512 : null;
+      }
+    } catch (e) {
+      if (request === photoQualityRequest && showPhotoQualityMenu) photoQualityError = `Could not check available sizes: ${String(e)}`;
+    } finally {
+      if (request === photoQualityRequest) photoQualityLoading = false;
+    }
+  }
+
+  async function downloadDetailPhoto(preferHigh = false) {
+    if (!detail || !selected || !capture || photoDownloadBusy) return;
+    const photoUrl = detailPhotoUrl();
+    if (!photoUrl) {
+      toastMessage = 'No photo is available for this contact.';
+      return;
+    }
+    photoDownloadBusy = true;
+    try {
+      const info = preferHigh || !photoQualityInfo
+        ? await api.singlePhotoQuality(selected.id, previewSequence ?? capture.sequence, photoUrl)
+        : photoQualityInfo;
+      const size = preferHigh
+        ? (info.resizable && Math.max(info.width, info.height) >= 512 ? 512 : null)
+        : photoQualitySelection;
+      const formatNames: Record<string, string> = { jpg: 'JPEG', png: 'PNG', webp: 'WebP', gif: 'GIF' };
+      const formats = [info.extension, 'jpg', 'png', 'webp'].filter((value, index, all) => all.indexOf(value) === index);
+      const name = getDisplayName(detail).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '') || 'Contact photo';
+      const destination = await save({
+        defaultPath: `${name}.${info.extension}`,
+        title: 'Save Contact Photo',
+        filters: formats.map((extension) => ({
+          name: extension === info.extension ? `${formatNames[extension]} (original format)` : formatNames[extension],
+          extensions: [extension],
+        })),
+      });
+      if (!destination) return;
+      const savedPath = await api.exportSinglePhoto(selected.id, previewSequence ?? capture.sequence, photoUrl, destination, size);
+      toastMessage = `Photo saved to ${savedPath}`;
+      showDetailMenu = false;
+      showPhotoQualityMenu = false;
+    } catch (e) {
+      const message = `Could not download photo: ${String(e)}`;
+      if (showPhotoQualityMenu) photoQualityError = message;
+      else toastMessage = message;
+    } finally {
+      photoDownloadBusy = false;
+    }
+  }
+
   async function startPhotoExport() {
     if (!selected || !capture) return;
     photoExportBusy = true;
@@ -2312,7 +2392,7 @@
         capture.sequence,
         destination,
         photoExportFormat,
-        photoExportIncludeDefault
+        false
       );
       photoExportResult = res;
     } catch (e) {
@@ -3323,7 +3403,7 @@
             <input
               type="text"
               class="search-input"
-              placeholder="Search contacts (Ctrl+K)"
+              placeholder="Search contacts"
               aria-label="Search contacts"
               bind:this={searchInputEl}
               bind:value={search}
@@ -3332,9 +3412,7 @@
               onclick={onSearchFocus}
               onkeydown={onSearchKeyDown}
             />
-            {#if !search}
-              <span class="search-shortcut-badge" data-tooltip="Press Ctrl+K to search">Ctrl K</span>
-            {:else}
+            {#if search}
               <button class="search-clear-btn" aria-label="Clear search" data-tooltip="Clear search" onclick={clearSearch}>
                 <span class="material-symbols-outlined">close</span>
               </button>
@@ -3826,7 +3904,7 @@
                   <div class="detail-menu-container">
                     <button
                       class="icon-btn"
-                      onclick={() => (showDetailMenu = !showDetailMenu)}
+                      onclick={() => { showDetailMenu = !showDetailMenu; showPhotoQualityMenu = false; }}
                       aria-label="More options"
                       aria-haspopup="true"
                       aria-expanded={showDetailMenu}
@@ -3853,6 +3931,40 @@
                           <span class="material-symbols-outlined">download</span>
                           <span>Export JSON</span>
                         </button>
+                        <div class="detail-photo-trigger">
+                          <button class="detail-menu-item detail-photo-main" role="menuitem" disabled={!detailPhotoUrl() || photoDownloadBusy} title={!detailPhotoUrl() ? 'No photo available for this contact' : 'Download Photo at High quality'} onclick={() => downloadDetailPhoto(true)}>
+                            <span class="material-symbols-outlined">image</span>
+                            <span>Download Photo</span>
+                          </button>
+                          <button class="detail-photo-expand" type="button" aria-label="Choose Photo quality" aria-expanded={showPhotoQualityMenu} aria-haspopup="true" disabled={!detailPhotoUrl()} onclick={openPhotoQualityMenu}>
+                            <span class="material-symbols-outlined">chevron_right</span>
+                          </button>
+                        </div>
+                        {#if showPhotoQualityMenu}
+                          <div class="detail-photo-submenu" role="group" aria-label="Photo download quality">
+                            {#if photoQualityLoading}
+                              <div class="detail-photo-status">Checking available sizes…</div>
+                              <div class="detail-photo-progress" role="progressbar" aria-label="Checking available photo sizes" aria-valuetext="Checking available sizes">
+                                <div class="detail-photo-progress-fill"></div>
+                              </div>
+                            {:else if photoQualityInfo}
+                              <div class="detail-photo-heading">Photo quality</div>
+                              <div class="detail-photo-options" role="radiogroup" aria-label="Photo quality">
+                                <button class="detail-photo-option" class:selected={photoQualitySelection === null} role="radio" aria-checked={photoQualitySelection === null} onclick={() => photoQualitySelection = null}>
+                                  <span>Original</span><small>{photoQualityInfo.width} × {photoQualityInfo.height} px</small>
+                                </button>
+                                {#each [{ label: 'High', size: 512 }, { label: 'Medium', size: 256 }, { label: 'Low', size: 96 }] as quality}
+                                  {@const available = photoQualityInfo.resizable && Math.max(photoQualityInfo.width, photoQualityInfo.height) >= quality.size}
+                                  <button class="detail-photo-option" class:selected={photoQualitySelection === quality.size} role="radio" aria-checked={photoQualitySelection === quality.size} disabled={!available} title={available ? `${quality.size} pixels on the longest side` : `Requires a photo at least ${quality.size} pixels wide or high`} onclick={() => photoQualitySelection = quality.size}>
+                                    <span>{quality.label}</span><small>{quality.size} px</small>
+                                  </button>
+                                {/each}
+                              </div>
+                              <button class="detail-photo-save" disabled={photoDownloadBusy} onclick={() => downloadDetailPhoto()}>{photoDownloadBusy ? 'Downloading…' : 'Download Photo'}</button>
+                            {/if}
+                            {#if photoQualityError}<div class="detail-photo-error" role="alert">{photoQualityError}</div>{/if}
+                          </div>
+                        {/if}
                         <div class="detail-menu-divider"></div>
                         <button class="detail-menu-item" role="menuitem" onclick={() => { showDetailMenu = false; window.print(); }}>
                           <span class="material-symbols-outlined">print</span>
@@ -4635,6 +4747,11 @@
 
           <div class="table-scroll-container">
             <table class="contacts-table">
+              <colgroup>
+                {#each activeColKeys as colKey}
+                  <col style="width: {colWidths[colKey]}px;" />
+                {/each}
+              </colgroup>
               <thead>
                 {#if selectedContactKeys.length > 0}
                   <tr class="table-selection-row">
@@ -6784,24 +6901,6 @@
                 <div style="font-size: 11px; color: var(--text-secondary); text-align: center;">Bundle all photos into a single compressed .zip file</div>
               </button>
             </div>
-          </div>
-
-          <!-- Options -->
-          <div style="background: var(--google-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px;">
-            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; user-select: none;">
-              <input
-                type="checkbox"
-                bind:checked={photoExportIncludeDefault}
-                disabled={photoExportBusy}
-                style="margin-top: 3px;"
-              />
-              <div>
-                <div style="font-size: 13px; font-weight: 500; color: var(--text-primary);">Include default / generated letter avatars</div>
-                <div style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
-                  Uncheck to export only custom uploaded photos, skipping generic Google placeholder icons.
-                </div>
-              </div>
-            </label>
           </div>
 
           <!-- Progress during export -->

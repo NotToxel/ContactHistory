@@ -3,6 +3,7 @@ use crate::core::{
     storage::{Account, Store},
 };
 use anyhow::{bail, Context, Result};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use image::{GenericImageView, ImageReader};
 use rusqlite::OptionalExtension;
 use reqwest::blocking::Client;
@@ -526,6 +527,15 @@ fn load_single_photo(
     sequence: i64,
     photo_url: &str,
 ) -> Result<(Vec<u8>, &'static str)> {
+    if photo_url.starts_with("data:image/") {
+        let encoded = photo_url.split_once(',').context("invalid photo data")?.1;
+        if encoded.len() > 28 * 1024 * 1024 {
+            bail!("photo data is too large");
+        }
+        let bytes = STANDARD.decode(encoded)?;
+        let ext = detect_extension(&bytes)?;
+        return Ok((bytes, ext));
+    }
     let db = store.open_db(&account.id)?;
     store.verify(account, &db)?;
     let cached: Option<(String, String)> = db.query_row(

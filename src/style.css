@@ -490,25 +490,6 @@ input.search-input:focus-visible {
   background-color: var(--google-surface-active);
 }
 
-.search-shortcut-badge {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--google-text-secondary);
-  background: var(--google-surface-hover);
-  border: 1px solid var(--google-border);
-  border-radius: 6px;
-  padding: 3px 6px;
-  user-select: none;
-  pointer-events: none;
-  line-height: 1.2;
-  letter-spacing: 0.3px;
-  flex-shrink: 0;
-}
-
-.topbar-search:focus-within .search-shortcut-badge {
-  display: none;
-}
-
 /* Search Dropdown Popup */
 .search-dropdown-menu {
   position: absolute;
@@ -720,7 +701,7 @@ input.search-input:focus-visible {
   display: inline-flex;
 }
 
-.snapshot-popover {
+.snapshot-dropdown-container > .snapshot-popover {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
@@ -1292,6 +1273,8 @@ input.search-input:focus-visible {
 .contacts-table thead th {
   position: sticky;
   top: 0;
+  height: 48px;
+  box-sizing: border-box;
   background-color: var(--surface-base);
   color: var(--google-text-secondary);
   font-weight: 500;
@@ -1921,39 +1904,37 @@ input.search-input:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
   padding: 0;
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: var(--google-text-secondary);
+  color: var(--google-blue);
   opacity: 0;
+  visibility: hidden;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
-  transform: scale(0.85);
+  transition: opacity 0.15s ease, visibility 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
 .table-cell-copy-btn .material-symbols-outlined {
-  font-size: 14px;
+  font-size: 18px;
 }
 
-.contact-row:hover .table-cell-copy-btn,
-.table-cell-copy-btn:focus-visible,
-.table-cell-copy-btn.copied {
+.table-cell-content:hover .table-cell-copy-btn,
+.table-cell-content:focus-within .table-cell-copy-btn {
   opacity: 1;
-  transform: scale(1);
+  visibility: visible;
 }
 
 .table-cell-copy-btn:hover {
-  background: var(--google-surface-hover);
-  color: var(--google-text);
+  background: var(--google-blue-surface);
+  color: var(--google-blue);
 }
 
 .table-cell-copy-btn.copied {
-  opacity: 1;
   color: var(--google-green, #1e8e3e);
   background-color: rgba(30, 142, 62, 0.12);
 }
@@ -4764,6 +4745,7 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
 
 /* ── Detail View Container & Frozen Top Bar ─────────────────────────────── */
 .detail-container {
+  --detail-pad-x: clamp(20px, 4vw, 64px);
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -4809,6 +4791,15 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   box-sizing: border-box;
   gap: 16px;
   padding: 0;
+  margin-bottom: 0;
+}
+
+@container (max-width: 960px) {
+  .detail-container { --detail-pad-x: 24px; }
+}
+
+@media (max-width: 600px) {
+  .detail-container { --detail-pad-x: 16px; }
 }
 
 .detail-top-nav-left {
@@ -4946,6 +4937,35 @@ button:disabled { opacity: 1; color: var(--google-text-secondary); background-co
   color: var(--google-text-secondary);
   flex-shrink: 0;
 }
+
+.detail-photo-trigger { display: flex; align-items: stretch; }
+.detail-photo-main { flex: 1; min-width: 0; padding-right: 8px; }
+.detail-photo-main:disabled { opacity: .5; cursor: not-allowed; }
+.detail-photo-expand { display: grid; place-items: center; width: 42px; flex: none; border: 0; background: transparent; color: var(--google-text-secondary); cursor: pointer; }
+.detail-photo-expand:hover:not(:disabled) { background: var(--google-surface-hover); }
+.detail-photo-expand:disabled { opacity: .4; cursor: not-allowed; }
+.detail-photo-expand[aria-expanded="true"] .material-symbols-outlined { transform: rotate(90deg); }
+.detail-photo-expand .material-symbols-outlined { font-size: 18px; transition: transform .15s ease; }
+.detail-photo-submenu { padding: 8px 12px 12px; border-top: 1px solid var(--google-border-subtle); }
+.detail-photo-heading { padding: 3px 8px 7px; color: var(--google-text-secondary); font-size: 12px; font-weight: 600; }
+.detail-photo-options { display: grid; gap: 2px; }
+.detail-photo-option { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; padding: 8px 8px 8px 29px; border: 0; border-radius: 7px; background: transparent; color: var(--google-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.detail-photo-option small { color: var(--google-text-secondary); font-size: 12px; white-space: nowrap; }
+.detail-photo-option:hover:not(:disabled), .detail-photo-option.selected { background: var(--google-blue-surface); }
+.detail-photo-option.selected::before { content: '✓'; position: absolute; left: 9px; color: var(--google-blue); font-weight: 700; }
+.detail-photo-option:disabled { opacity: .42; cursor: not-allowed; }
+.detail-photo-save { width: 100%; margin-top: 10px; padding: 9px 12px; border: 0; border-radius: 7px; background: var(--google-blue); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.detail-photo-save:hover:not(:disabled) { background: var(--google-blue-hover); }
+:root[data-theme="dark"] .detail-photo-save { color: #202124; }
+.detail-photo-save:disabled { opacity: .55; cursor: wait; }
+.detail-photo-main:focus-visible, .detail-photo-expand:focus-visible, .detail-photo-option:focus-visible, .detail-photo-save:focus-visible { outline: 2px solid var(--google-blue); outline-offset: -2px; }
+.detail-photo-status, .detail-photo-error { padding: 8px; font-size: 12px; line-height: 1.4; }
+.detail-photo-status { color: var(--google-text-secondary); }
+.detail-photo-progress { height: 4px; margin: 0 8px 8px; overflow: hidden; border-radius: 999px; background: var(--google-blue-surface); }
+.detail-photo-progress-fill { width: 35%; height: 100%; border-radius: inherit; background: var(--google-blue); animation: detailPhotoProgress 1.3s ease-in-out infinite; }
+@keyframes detailPhotoProgress { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+@media (prefers-reduced-motion: reduce) { .detail-photo-progress-fill { animation: none; width: 100%; } }
+.detail-photo-error { color: var(--google-red, #b3261e); overflow-wrap: anywhere; }
 
 .detail-menu-divider {
   height: 1px;
