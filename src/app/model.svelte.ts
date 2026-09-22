@@ -164,6 +164,11 @@ export class AppModel {
   toggleSchedule = actions_preferences.toggleSchedule.bind(this);
   exportSelected = actions_downloads.exportSelected.bind(this);
   toggleContactSelection = actions_downloads.toggleContactSelection.bind(this);
+  contactSelectionRange = actions_downloads.contactSelectionRange.bind(this);
+  previewContactSelection = actions_downloads.previewContactSelection.bind(this);
+  endContactSelectionPreview = actions_downloads.endContactSelectionPreview.bind(this);
+  refreshContactSelectionPreview = actions_downloads.refreshContactSelectionPreview.bind(this);
+  clearContactSelectionPreview = actions_downloads.clearContactSelectionPreview.bind(this);
   selectAllVisible = actions_downloads.selectAllVisible.bind(this);
   clearContactSelection = actions_downloads.clearContactSelection.bind(this);
   toggleSelectAll = actions_downloads.toggleSelectAll.bind(this);
@@ -182,6 +187,7 @@ export class AppModel {
   disconnectSelected = actions_accounts.disconnectSelected.bind(this);
   connectNewAccount = actions_accounts.connectNewAccount.bind(this);
   handleGlobalKeyDown = actions_keyboard.handleGlobalKeyDown.bind(this);
+  handleGlobalKeyUp = actions_keyboard.handleGlobalKeyUp.bind(this);
   formatContactSummary = actions_contact_fields.formatContactSummary.bind(this);
   handleGlobalContextMenu = actions_context_menu.handleGlobalContextMenu.bind(this);
 
@@ -248,16 +254,23 @@ export class AppModel {
   searchActiveIndex = $state(0);
   contacts: Contact[] = $state([]);
   selectedContactKeys = $state<string[]>([]);
+  selectionAnchorKey: string | null = $state(null);
+  hoveredSelectionContactKey: string | null = $state(null);
+  selectionPreviewKeys = $state<string[]>([]);
+  selectionPreviewMode: 'select' | 'deselect' | null = $state(null);
+  selectionPreviewCount = $state(0);
+  selectedContactKeySet = $derived(new Set(this.selectedContactKeys));
+  selectionPreviewKeySet = $derived(new Set(this.selectionPreviewKeys));
   showSelectionMenu = $state(false);
   showDownloadMenu = $state(false);
   selectedCount = $derived(this.selectedContactKeys.length);
   isAllSelected = $derived(
     this.contacts.length > 0 &&
-      this.contacts.every((c) => this.selectedContactKeys.includes(c.resource_name)),
+      this.contacts.every((c) => this.selectedContactKeySet.has(c.resource_name)),
   );
   isIndeterminate = $derived(this.selectedContactKeys.length > 0 && !this.isAllSelected);
   selectedContactsList = $derived(
-    this.contacts.filter((c) => this.selectedContactKeys.includes(c.resource_name)),
+    this.contacts.filter((c) => this.selectedContactKeySet.has(c.resource_name)),
   );
   detail: Contact | undefined = $state();
   media: MediaView[] = $state([]);

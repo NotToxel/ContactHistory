@@ -77,26 +77,173 @@ export async function exportSelected(
 }
 
 export function toggleContactSelection(
-  this: Pick<AppModel, 'selectedContactKeys'>,
+  this: Pick<
+    AppModel,
+    'favouriteContacts' | 'otherContacts' | 'selectionAnchorKey' | 'selectedContactKeys'
+  >,
   resName: string,
-  event?: MouseEvent,
+  event?: MouseEvent | KeyboardEvent,
 ): void {
   if (event) {
     event.stopPropagation();
   }
+
+  if (event?.shiftKey) {
+    const rangeKeys = contactSelectionRange.call(this, resName);
+    if (rangeKeys.length > 0) {
+      const selected = new Set(this.selectedContactKeys);
+      const shouldDeselect = selected.has(resName);
+      for (const key of rangeKeys) {
+        if (shouldDeselect) selected.delete(key);
+        else selected.add(key);
+      }
+      this.selectedContactKeys = [...selected];
+      return;
+    }
+  }
+
   if (this.selectedContactKeys.includes(resName)) {
     this.selectedContactKeys = this.selectedContactKeys.filter((k) => k !== resName);
   } else {
     this.selectedContactKeys = [...this.selectedContactKeys, resName];
   }
+  this.selectionAnchorKey = resName;
 }
 
-export function selectAllVisible(this: Pick<AppModel, 'contacts' | 'selectedContactKeys'>): void {
+export function contactSelectionRange(
+  this: Pick<
+    AppModel,
+    'favouriteContacts' | 'otherContacts' | 'selectionAnchorKey' | 'selectedContactKeys'
+  >,
+  resName: string,
+): string[] {
+  if (!this.selectionAnchorKey || this.selectedContactKeys.length === 0) return [];
+
+  const visibleKeys = [...this.favouriteContacts, ...this.otherContacts].map(
+    (contact) => contact.resource_name,
+  );
+  const anchorIndex = visibleKeys.indexOf(this.selectionAnchorKey);
+  const targetIndex = visibleKeys.indexOf(resName);
+  if (anchorIndex === -1 || targetIndex === -1) return [];
+
+  const start = Math.min(anchorIndex, targetIndex);
+  const end = Math.max(anchorIndex, targetIndex);
+  return visibleKeys.slice(start, end + 1);
+}
+
+export function previewContactSelection(
+  this: Pick<
+    AppModel,
+    | 'contactSelectionRange'
+    | 'hoveredSelectionContactKey'
+    | 'selectionPreviewMode'
+    | 'selectionPreviewKeys'
+    | 'selectionPreviewCount'
+    | 'selectedContactKeys'
+  >,
+  resName: string,
+  shiftKey: boolean,
+): void {
+  this.hoveredSelectionContactKey = resName;
+  updateSelectionPreview(this, shiftKey);
+}
+
+export function endContactSelectionPreview(
+  this: Pick<
+    AppModel,
+    | 'hoveredSelectionContactKey'
+    | 'selectionPreviewKeys'
+    | 'selectionPreviewMode'
+    | 'selectionPreviewCount'
+  >,
+  resName: string,
+): void {
+  if (this.hoveredSelectionContactKey !== resName) return;
+  this.hoveredSelectionContactKey = null;
+  this.selectionPreviewKeys = [];
+  this.selectionPreviewMode = null;
+  this.selectionPreviewCount = 0;
+}
+
+export function refreshContactSelectionPreview(
+  this: Pick<
+    AppModel,
+    | 'contactSelectionRange'
+    | 'hoveredSelectionContactKey'
+    | 'selectionPreviewKeys'
+    | 'selectionPreviewMode'
+    | 'selectionPreviewCount'
+    | 'selectedContactKeys'
+  >,
+  shiftKey: boolean,
+): void {
+  updateSelectionPreview(this, shiftKey);
+}
+
+function updateSelectionPreview(
+  app: Pick<
+    AppModel,
+    | 'contactSelectionRange'
+    | 'hoveredSelectionContactKey'
+    | 'selectionPreviewKeys'
+    | 'selectionPreviewMode'
+    | 'selectionPreviewCount'
+    | 'selectedContactKeys'
+  >,
+  shiftKey: boolean,
+): void {
+  const target = app.hoveredSelectionContactKey;
+  const range = shiftKey && target ? app.contactSelectionRange(target) : [];
+  const selected = new Set(app.selectedContactKeys);
+  const mode = range.length === 0 ? null : target && selected.has(target) ? 'deselect' : 'select';
+  const affected =
+    mode === 'deselect'
+      ? range.filter((key) => selected.has(key))
+      : mode === 'select'
+        ? range.filter((key) => !selected.has(key))
+        : [];
+  app.selectionPreviewKeys = affected;
+  app.selectionPreviewMode = affected.length > 0 ? mode : null;
+  app.selectionPreviewCount = affected.length;
+}
+
+export function clearContactSelectionPreview(
+  this: Pick<
+    AppModel,
+    | 'hoveredSelectionContactKey'
+    | 'selectionPreviewKeys'
+    | 'selectionPreviewMode'
+    | 'selectionPreviewCount'
+  >,
+): void {
+  this.hoveredSelectionContactKey = null;
+  this.selectionPreviewKeys = [];
+  this.selectionPreviewMode = null;
+  this.selectionPreviewCount = 0;
+}
+
+export function selectAllVisible(
+  this: Pick<
+    AppModel,
+    'clearContactSelectionPreview' | 'contacts' | 'selectionAnchorKey' | 'selectedContactKeys'
+  >,
+): void {
   this.selectedContactKeys = this.contacts.map((c) => c.resource_name);
+  this.selectionAnchorKey = null;
+  this.clearContactSelectionPreview();
 }
 
-export function clearContactSelection(this: Pick<AppModel, 'selectedContactKeys'>): void {
+export function clearContactSelection(
+  this: Pick<
+    AppModel,
+    | 'clearContactSelectionPreview'
+    | 'selectionAnchorKey'
+    | 'selectedContactKeys'
+  >,
+): void {
   this.selectedContactKeys = [];
+  this.selectionAnchorKey = null;
+  this.clearContactSelectionPreview();
 }
 
 export function toggleSelectAll(

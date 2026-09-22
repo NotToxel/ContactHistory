@@ -2,13 +2,28 @@
   import { api, type Contact } from '../../lib/ipc';
   import type { AppModel } from '../model.svelte';
   let { app, contact }: { app: AppModel; contact: Contact } = $props();
+  const isSelected = $derived(app.selectedContactKeySet.has(contact.resource_name));
+  const isPreviewed = $derived(app.selectionPreviewKeySet.has(contact.resource_name));
+  const isDeselectPreview = $derived(isPreviewed && app.selectionPreviewMode === 'deselect');
 </script>
 
 <tr
   class="contact-row"
-  class:is-selected={app.selectedContactKeys.includes(contact.resource_name)}
+  class:is-selected={isSelected}
+  class:is-range-preview={isPreviewed}
+  class:is-range-deselect-preview={isDeselectPreview}
   data-contact-res={contact.resource_name}
-  onclick={() => app.selectContact(contact)}
+  onmouseenter={(e) => app.previewContactSelection(contact.resource_name, e.shiftKey)}
+  onmouseleave={() => app.endContactSelectionPreview(contact.resource_name)}
+  onclick={(e) => {
+    if (e.shiftKey) {
+      e.preventDefault();
+      app.toggleContactSelection(contact.resource_name, e);
+      app.clearContactSelectionPreview();
+    } else {
+      app.selectContact(contact);
+    }
+  }}
 >
   {#each app.activeColKeys as colKey}
     {#if colKey === 'name'}
@@ -16,19 +31,25 @@
         <div class="name-cell-content">
           <div
             class="avatar-select-container"
-            class:selected={app.selectedContactKeys.includes(contact.resource_name)}
-            onclick={(e) => app.toggleContactSelection(contact.resource_name, e)}
+            class:selected={isSelected}
+            class:preview={isPreviewed}
+            class:deselect-preview={isDeselectPreview}
+            onclick={(e) => {
+              app.toggleContactSelection(contact.resource_name, e);
+              app.clearContactSelectionPreview();
+            }}
             onkeydown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.stopPropagation();
                 e.preventDefault();
-                app.toggleContactSelection(contact.resource_name);
+                app.toggleContactSelection(contact.resource_name, e);
+                app.clearContactSelectionPreview();
               }
             }}
             role="checkbox"
-            aria-checked={app.selectedContactKeys.includes(contact.resource_name)}
+            aria-checked={isSelected}
             tabindex="0"
-            title={app.selectedContactKeys.includes(contact.resource_name)
+            title={isSelected
               ? 'Deselect contact'
               : 'Select contact'}
           >
@@ -57,9 +78,13 @@
             </div>
             <div
               class="contact-select-checkbox"
-              class:checked={app.selectedContactKeys.includes(contact.resource_name)}
+              class:checked={isSelected}
+              class:preview={isPreviewed}
+              class:deselect-preview={isDeselectPreview}
             >
-              {#if app.selectedContactKeys.includes(contact.resource_name)}
+              {#if isDeselectPreview}
+                <span class="material-symbols-outlined check-icon">remove</span>
+              {:else if isSelected || isPreviewed}
                 <span class="material-symbols-outlined check-icon">check</span>
               {/if}
             </div>

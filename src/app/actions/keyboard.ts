@@ -12,12 +12,14 @@ export function handleGlobalKeyDown(
     | 'searchDropdownOpen'
     | 'searchInputEl'
     | 'selectedContactKeys'
+    | 'refreshContactSelectionPreview'
     | 'showDownloadMenu'
     | 'showSelectionMenu'
     | 'showSnapshotDropdown'
   >,
   event: KeyboardEvent,
 ): void {
+  if (event.key === 'Shift') this.refreshContactSelectionPreview(true);
   if (
     event.altKey &&
     !event.ctrlKey &&
@@ -69,4 +71,11 @@ export function handleGlobalKeyDown(
       this.clearSearch();
     }
   }
+}
+
+export function handleGlobalKeyUp(
+  this: Pick<AppModel, 'refreshContactSelectionPreview'>,
+  event: KeyboardEvent,
+): void {
+  if (event.key === 'Shift') this.refreshContactSelectionPreview(false);
 }

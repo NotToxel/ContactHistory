@@ -147,6 +147,20 @@
   user-select: none;
 }
 
+.selection-preview-count {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--google-blue-surface);
+  color: var(--google-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.selection-preview-count.is-removing {
+  background: var(--google-surface-hover);
+  color: var(--google-text-secondary);
+}
+
 .selection-toolbar-actions {
   display: flex;
   align-items: center;

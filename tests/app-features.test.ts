@@ -5,7 +5,12 @@ import {
   matchesToken,
   updateDisplayedContacts,
 } from '../src/app/actions/search';
-import { downloadContactVcf } from '../src/app/actions/downloads';
+import {
+  contactSelectionRange,
+  downloadContactVcf,
+  previewContactSelection,
+  toggleContactSelection,
+} from '../src/app/actions/downloads';
 import { getAllEvents, isFavourite } from '../src/app/actions/contact-fields';
 import { generateMultipleContactsVcf } from '../src/lib/export-csv';
 import type { Contact } from '../src/lib/ipc';
@@ -95,6 +100,108 @@ describe('extracted contact features', () => {
     expect(downloaded).toContain('second@example.test');
     expect(downloaded).toContain('+33123456789');
     expect(downloaded).toContain('Line one\\nLine two');
+  });
+
+  it('shift-selects every contact between the anchor and target in visible row order', () => {
+    const favourite = contact('favourite', ['contactGroups/starred']);
+    const first = contact('first', []);
+    const second = contact('second', []);
+    const third = contact('third', []);
+    const ctx = {
+      favouriteContacts: [favourite],
+      otherContacts: [first, second, third],
+      selectedContactKeys: [] as string[],
+      selectionAnchorKey: null as string | null,
+    };
+    const click = (shiftKey = false) =>
+      ({ shiftKey, stopPropagation() {} }) as unknown as MouseEvent;
+
+    toggleContactSelection.call(ctx, 'first', click());
+    toggleContactSelection.call(ctx, 'third', click(true));
+
+    expect(ctx.selectedContactKeys).toEqual(['first', 'second', 'third']);
+    expect(ctx.selectionAnchorKey).toBe('first');
+  });
+
+  it('adds a shift-selected range to contacts that were already selected', () => {
+    const favourite = contact('favourite', ['contactGroups/starred']);
+    const first = contact('first', []);
+    const second = contact('second', []);
+    const ctx = {
+      favouriteContacts: [favourite],
+      otherContacts: [first, second],
+      selectedContactKeys: ['favourite', 'first'],
+      selectionAnchorKey: 'first',
+    };
+    const shiftClick = { shiftKey: true, stopPropagation() {} } as unknown as MouseEvent;
+
+    toggleContactSelection.call(ctx, 'second', shiftClick);
+
+    expect(ctx.selectedContactKeys).toEqual(['favourite', 'first', 'second']);
+  });
+
+  it('previews the anchored range while shift is held over a contact', () => {
+    const first = contact('first', []);
+    const second = contact('second', []);
+    const third = contact('third', []);
+    const ctx = {
+      favouriteContacts: [],
+      otherContacts: [first, second, third],
+      selectedContactKeys: ['first'],
+      selectionAnchorKey: 'first',
+      hoveredSelectionContactKey: null as string | null,
+      selectionPreviewKeys: [] as string[],
+      selectionPreviewMode: null as 'select' | 'deselect' | null,
+      selectionPreviewCount: 0,
+      contactSelectionRange,
+    };
+
+    previewContactSelection.call(ctx, 'third', true);
+
+    expect(ctx.hoveredSelectionContactKey).toBe('third');
+    expect(ctx.selectionPreviewKeys).toEqual(['second', 'third']);
+    expect(ctx.selectionPreviewMode).toBe('select');
+    expect(ctx.selectionPreviewCount).toBe(2);
+  });
+
+  it('previews only contacts that will actually be deselected', () => {
+    const first = contact('first', []);
+    const second = contact('second', []);
+    const third = contact('third', []);
+    const ctx = {
+      favouriteContacts: [],
+      otherContacts: [first, second, third],
+      selectedContactKeys: ['first', 'third'],
+      selectionAnchorKey: 'first',
+      hoveredSelectionContactKey: null as string | null,
+      selectionPreviewKeys: [] as string[],
+      selectionPreviewMode: null as 'select' | 'deselect' | null,
+      selectionPreviewCount: 0,
+      contactSelectionRange,
+    };
+
+    previewContactSelection.call(ctx, 'third', true);
+
+    expect(ctx.selectionPreviewKeys).toEqual(['first', 'third']);
+    expect(ctx.selectionPreviewMode).toBe('deselect');
+    expect(ctx.selectionPreviewCount).toBe(2);
+  });
+
+  it('shift-clicking a selected endpoint deselects the anchored range', () => {
+    const first = contact('first', []);
+    const second = contact('second', []);
+    const third = contact('third', []);
+    const ctx = {
+      favouriteContacts: [],
+      otherContacts: [first, second, third],
+      selectedContactKeys: ['first', 'second', 'third'],
+      selectionAnchorKey: 'first',
+    };
+    const shiftClick = { shiftKey: true, stopPropagation() {} } as unknown as MouseEvent;
+
+    toggleContactSelection.call(ctx, 'second', shiftClick);
+
+    expect(ctx.selectedContactKeys).toEqual(['third']);
   });
 
   it('formats contact events using the chosen date format, including yearless dates', () => {

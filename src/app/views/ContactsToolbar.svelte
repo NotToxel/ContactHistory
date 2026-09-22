@@ -69,6 +69,15 @@
         </div>
         <span class="selection-count-label">
           {app.selectedContactKeys.length} selected
+          {#if app.selectionPreviewCount > 0}
+            <span
+              class="selection-preview-count"
+              class:is-removing={app.selectionPreviewMode === 'deselect'}
+              aria-hidden="true"
+            >
+              {app.selectionPreviewMode === 'deselect' ? '−' : '+'}{app.selectionPreviewCount}
+            </span>
+          {/if}
         </span>
       </div>
 

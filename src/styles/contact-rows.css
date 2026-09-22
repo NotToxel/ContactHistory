@@ -175,8 +175,62 @@
   background-color: var(--google-blue-surface) !important;
 }
 
+.contact-row.is-range-preview {
+  background-color: var(--google-blue-surface) !important;
+}
+
+.contact-row.is-range-preview td:first-child {
+  box-shadow: inset 2px 0 0 var(--google-blue);
+}
+
+.contact-row.is-range-deselect-preview {
+  background-color: var(--google-surface-hover) !important;
+}
+
+.contact-row.is-range-deselect-preview td:first-child {
+  box-shadow: inset 2px 0 0 var(--google-text-secondary);
+}
+
+.avatar-select-container.preview .avatar-circle,
+.avatar-select-container.preview .contact-select-checkbox {
+  opacity: 1;
+  pointer-events: none;
+  transform: scale(1);
+}
+
+.avatar-select-container.preview .avatar-circle {
+  opacity: 0;
+  transform: scale(0.85);
+}
+
+.contact-select-checkbox.preview:not(.checked) {
+  border-color: var(--google-blue);
+  background-color: var(--google-blue-surface);
+}
+
+.contact-select-checkbox.preview:not(.checked) .check-icon {
+  color: var(--google-blue);
+}
+
+.contact-select-checkbox.checked.deselect-preview {
+  border-color: var(--google-text-secondary) !important;
+  background-color: var(--surface-base) !important;
+}
+
+.contact-select-checkbox.deselect-preview .check-icon {
+  color: var(--google-text-secondary);
+}
+
 :root[data-theme='dark'] .contact-row.is-selected {
   background-color: rgba(138, 180, 248, 0.16) !important;
+}
+
+:root[data-theme='dark'] .contact-row.is-range-preview {
+  background-color: rgba(138, 180, 248, 0.1) !important;
+}
+
+:root[data-theme='dark'] .contact-row.is-range-deselect-preview {
+  background-color: var(--google-surface-hover) !important;
 }
 
 :root[data-theme='dark'] .contact-select-checkbox {

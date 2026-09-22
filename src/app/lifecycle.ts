@@ -9,6 +9,8 @@ export function registerLifecycle(this: AppModel): void {
     const events = new AbortController();
     const options = { signal: events.signal };
     window.addEventListener('keydown', this.handleGlobalKeyDown, options);
+    window.addEventListener('keyup', this.handleGlobalKeyUp, options);
+    window.addEventListener('blur', this.clearContactSelectionPreview, options);
     window.addEventListener('popstate', this.handlePopState, options);
     window.addEventListener('mouseup', this.handleNativeNavigation, options);
     window.addEventListener('click', this.handleWindowClick, options);
