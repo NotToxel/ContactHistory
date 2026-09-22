@@ -15,12 +15,13 @@ For checks:
 
 ```powershell
 bun run build
-cd src-tauri
-cargo test
-cargo fmt --check
+bun run test
+bun run test:rust
 ```
 
 The app keeps archives under `%APPDATA%\ContactHistory\accounts\<UUID>`. `accounts.json` is a non-secret registry. Each account has its own SQLite database. Refresh tokens are held in Windows Credential Manager via `keyring`.
+
+See [code organization](docs/code-organization.md) for the frontend modules, state ownership, styles, backend query modules, and conventions for adding features. `bun run check` runs the Svelte/TypeScript checks without bundling; `bun run format` formats frontend code and tests.
 
 ## Google setup
 
@@ -38,9 +39,8 @@ No OAuth client, user account, or live API credentials are included in the repo.
 To inspect two captures without a Google account, import the synthetic files in order:
 
 ```powershell
-cd src-tauri
-cargo run -- import-fixture ..\tests\fixtures\capture-1.json fixture-demo demo@example.test
-cargo run -- import-fixture ..\tests\fixtures\capture-2.json fixture-demo demo@example.test
+bun run native import-fixture tests\fixtures\capture-1.json fixture-demo demo@example.test
+bun run native import-fixture tests\fixtures\capture-2.json fixture-demo demo@example.test
 ```
 
 Then launch the app. The second capture has a revised Ada record and a deleted Grace record; selecting the first capture still shows Grace.
@@ -66,4 +66,4 @@ contact-history.exe export <account-uuid> <sequence> vcf C:\Backups\contacts.vcf
 
 ## Current validation limits
 
-The Rust fixture tests and frontend production build pass on Windows. A live Google OAuth account and disposable import target were not available, so OAuth consent, current Google CSV import, and vCard importer round trips have not been tested end to end. The UI uses a paginated list but has no virtualization or configurable columns yet. The release installer is unsigned. Other Contacts and Workspace directory datasets are outside the archive source.
+The Rust fixture tests and frontend production build pass on Windows. A live Google OAuth account and disposable import target were not available, so OAuth consent, current Google CSV import, and vCard importer round trips have not been tested end to end. The contact table has configurable columns but is not virtualized. The release installer is unsigned. Other Contacts and Workspace directory datasets are outside the archive source.

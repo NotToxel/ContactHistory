@@ -1,0 +1,90 @@
+/* Every surface consumes the same semantic palette, including native inputs. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --surface-base: #161a20;
+  --google-surface: #1e242e;
+  --google-surface-hover: #262e3a;
+  --google-surface-active: #323d4c;
+  --google-text: #edf1f7;
+  --google-text-secondary: #a9b5c4;
+  --google-text-tertiary: #8b99aa;
+  --google-border: #333d4b;
+  --google-border-subtle: #242c37;
+  --control-border: #465363;
+  --google-blue: #a8cdff;
+  --google-blue-hover: #c9e0ff;
+  --google-blue-surface: #1f354e;
+  --google-blue-pill: #2b4562;
+  --google-blue-container: #e1eeff;
+  --on-accent: #10263f;
+  --google-danger: #ffb4ab;
+  --google-danger-hover: #ffcec8;
+  --google-danger-surface: #442421;
+  --success-surface: #1d382b;
+  --success-text: #96d8aa;
+  --favorite: #f6c768;
+  --google-surface-container: #1e242e;
+}
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea {
+  background-color: var(--surface-base);
+  color: var(--google-text);
+  border-color: var(--control-border);
+  caret-color: var(--google-blue);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--google-text-secondary);
+  opacity: 1;
+}
+input.search-input,
+input.search-input:focus,
+input.search-input:focus-visible,
+input.changes-search-input,
+input.changes-search-input:focus,
+input.changes-search-input:focus-visible,
+input.search-input-field,
+input.search-input-field:focus,
+input.search-input-field:focus-visible {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--google-blue);
+}
+.win-btn.win-close:hover,
+.win-btn.win-close:active {
+  color: #fff;
+}
+.tooltip {
+  color: #fff;
+}
+button:disabled {
+  opacity: 1;
+  color: var(--google-text-secondary);
+  background-color: var(--google-surface);
+  border-color: var(--google-border);
+}
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 9px;
+}
+.app-brand {
+  flex-shrink: 0;
+}
+.app-title {
+  white-space: nowrap;
+  font-size: 18px;
+}
+.topbar-left {
+  min-width: 256px;
+  gap: 8px;
+}

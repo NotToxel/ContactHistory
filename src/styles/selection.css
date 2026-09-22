@@ -1,0 +1,125 @@
+/* ── Selection Action Bar & Download Dropdown ────────────────────────────── */
+.selection-active-header {
+  background-color: var(--surface-base);
+  border-bottom: 1px solid var(--google-border);
+  animation: fadeIn 0.12s ease-out;
+}
+
+.selection-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.selection-clear-btn {
+  color: var(--google-text-secondary);
+}
+
+.selection-count-text {
+  font-size: 14px;
+  color: var(--google-text);
+  font-weight: 400;
+  user-select: none;
+}
+
+.selection-count-text strong {
+  font-weight: 600;
+}
+
+.btn-select-all-visible {
+  background: none;
+  border: 1px solid var(--google-border);
+  border-radius: 16px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--google-blue);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.btn-select-all-visible:hover {
+  background-color: rgba(26, 115, 232, 0.08);
+  border-color: var(--google-blue);
+}
+
+:root[data-theme='dark'] .btn-select-all-visible:hover {
+  background-color: rgba(138, 180, 248, 0.12);
+}
+
+.selection-download-container {
+  position: relative;
+}
+
+.selection-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  height: 36px;
+  border-radius: 18px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.selection-download-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--surface-base);
+  border: 1px solid var(--google-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  min-width: 270px;
+  z-index: 200;
+  overflow: hidden;
+  animation: fadeIn 0.12s ease-out;
+  padding: 6px 0;
+}
+
+.selection-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 10px 18px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.1s;
+}
+
+.selection-menu-item:hover {
+  background: var(--google-surface-hover);
+}
+
+.selection-menu-item .material-symbols-outlined {
+  font-size: 20px;
+  color: var(--google-text-secondary);
+  flex-shrink: 0;
+}
+
+.selection-menu-item .menu-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.selection-menu-item .menu-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--google-text);
+}
+
+.selection-menu-item .menu-item-subtitle {
+  font-size: 11px;
+  color: var(--google-text-secondary);
+}
+
+:root[data-theme='dark'] .selection-download-menu {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+}

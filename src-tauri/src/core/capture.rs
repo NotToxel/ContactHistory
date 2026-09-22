@@ -1,3 +1,16 @@
+mod groups;
+mod history;
+mod queries;
+#[cfg(test)]
+mod tests;
+
+pub use groups::groups;
+pub use history::{
+    all_changes, compare_snapshots, contact_at_snapshot, contact_history, contact_snapshots,
+    ChangelogEntry, ContactHistoryEntry, ContactSnapshotEntry,
+};
+pub use queries::{capture_at, captures, changes, contacts};
+
 use crate::core::storage::{Account, Store};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
@@ -131,7 +144,12 @@ fn deleted(v: &Value) -> bool {
     v.pointer("/metadata/deleted").and_then(Value::as_bool) == Some(true)
 }
 
-pub fn publish(store: &Store, account: &Account, scan: Scan, trigger: &str) -> Result<CaptureOutcome> {
+pub fn publish(
+    store: &Store,
+    account: &Account,
+    scan: Scan,
+    trigger: &str,
+) -> Result<CaptureOutcome> {
     if !["manual", "due", "fixture", "import"].contains(&trigger) {
         bail!("invalid capture trigger");
     }
@@ -145,13 +163,19 @@ pub fn publish(store: &Store, account: &Account, scan: Scan, trigger: &str) -> R
     lock_file
         .try_lock_exclusive()
         .context("capture already running for this account")?;
-    let result = start_run(store, account, trigger)
-        .and_then(|(run_id, started)| publish_locked(store, account, scan, &run_id, &started, trigger));
+    let result = start_run(store, account, trigger).and_then(|(run_id, started)| {
+        publish_locked(store, account, scan, &run_id, &started, trigger)
+    });
     let _ = lock_file.unlock();
     result
 }
 
-pub fn capture_with<F>(store: &Store, account: &Account, trigger: &str, scan: F) -> Result<CaptureOutcome>
+pub fn capture_with<F>(
+    store: &Store,
+    account: &Account,
+    trigger: &str,
+    scan: F,
+) -> Result<CaptureOutcome>
 where
     F: FnOnce(Option<Arc<AtomicBool>>) -> Result<Scan>,
 {
@@ -216,9 +240,15 @@ where
                 });
                 let outcome = publish_locked(store, account, result, &run_id, &started, trigger)?;
                 let message = if outcome.is_new {
-                    format!("Snapshot #{} captured ({} changes)", outcome.sequence, outcome.change_count)
+                    format!(
+                        "Snapshot #{} captured ({} changes)",
+                        outcome.sequence, outcome.change_count
+                    )
                 } else {
-                    format!("No changes detected. Snapshot #{} is up to date", outcome.sequence)
+                    format!(
+                        "No changes detected. Snapshot #{} is up to date",
+                        outcome.sequence
+                    )
                 };
                 progress(&crate::core::google::CaptureProgress {
                     account_id: account.id.clone(),
@@ -311,7 +341,9 @@ fn publish_locked(
             let mut stmt = tx.prepare(
                 "SELECT g.resource_name, r.payload FROM capture_groups g JOIN group_revisions r ON r.id=g.revision_id WHERE g.capture_sequence=?1"
             )?;
-            let rows = stmt.query_map([prev], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+            let rows = stmt.query_map([prev], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?;
             for row in rows {
                 let (key, payload) = row?;
                 prior_groups.insert(key, payload);
@@ -362,12 +394,23 @@ fn publish_locked(
 
         // Diff-only snapshot creation: if no changes occurred and a snapshot already exists, don't create duplicate
         if previous.is_some() && trigger != "fixture" && changes_count == 0 {
+            let prev_seq = previous.unwrap();
+            if let Some(sync_token) = scan.next_sync_token {
+                tx.execute(
+                    "INSERT INTO sync_state(id,token,full_sync_at,coverage,capture_sequence) VALUES(1,?1,?2,?3,?4) ON CONFLICT(id) DO UPDATE SET token=excluded.token,full_sync_at=excluded.full_sync_at,coverage=excluded.coverage,capture_sequence=excluded.capture_sequence",
+                    params![
+                        sync_token,
+                        scan.full_sync_at.unwrap_or_else(|| committed.clone()),
+                        COVERAGE,
+                        prev_seq
+                    ],
+                )?;
+            }
             tx.execute(
                 "UPDATE capture_runs SET result='success',ended_at=?2 WHERE id=?1",
                 params![run_id, Utc::now().to_rfc3339()],
             )?;
             tx.commit()?;
-            let prev_seq = previous.unwrap();
             let prev_cap = db.query_row(
                 "SELECT sequence,started_at,committed_at,contact_count,group_count,media_complete FROM captures WHERE sequence=?1",
                 [prev_seq],
@@ -574,782 +617,4 @@ fn insert_revision(
     )?;
     tx.execute("INSERT INTO contact_revisions(contact_id,version,kind,semantic_json,first_capture) VALUES(?1,?2,?3,?4,?5)", params![contact_id,version,kind,semantic,sequence])?;
     Ok(tx.last_insert_rowid())
-}
-
-pub fn captures(store: &Store, account: &Account) -> Result<Vec<Capture>> {
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let mut stmt = db.prepare("SELECT sequence,started_at,committed_at,contact_count,group_count,media_complete FROM captures ORDER BY sequence DESC LIMIT 200")?;
-    let rows = stmt
-        .query_map([], |r| {
-            Ok(Capture {
-                sequence: r.get(0)?,
-                started_at: r.get(1)?,
-                committed_at: r.get(2)?,
-                contact_count: r.get(3)?,
-                group_count: r.get(4)?,
-                media_complete: r.get(5)?,
-            })
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
-}
-pub fn capture_at(store: &Store, account: &Account, time: &str) -> Result<Option<Capture>> {
-    let _ = chrono::DateTime::parse_from_rfc3339(time).context("invalid date/time")?;
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let mut stmt=db.prepare("SELECT sequence,started_at,committed_at,contact_count,group_count,media_complete FROM captures WHERE julianday(committed_at)<=julianday(?1) ORDER BY sequence DESC LIMIT 1")?;
-    Ok(stmt
-        .query_row([time], |r| {
-            Ok(Capture {
-                sequence: r.get(0)?,
-                started_at: r.get(1)?,
-                committed_at: r.get(2)?,
-                contact_count: r.get(3)?,
-                group_count: r.get(4)?,
-                media_complete: r.get(5)?,
-            })
-        })
-        .optional()?)
-}
-pub fn changes(
-    store: &Store,
-    account: &Account,
-    sequence: i64,
-    offset: i64,
-) -> Result<Vec<ChangeRow>> {
-    if sequence < 1 || offset < 0 {
-        bail!("invalid capture or offset");
-    }
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let sql = if offset > 0 {
-        "SELECT i.resource_name,r.kind,r.version,r.semantic_json,(SELECT p.semantic_json FROM contact_revisions p WHERE p.contact_id=r.contact_id AND p.version=r.version-1) FROM contact_revisions r JOIN contact_identities i ON i.id=r.contact_id WHERE r.first_capture=?1 ORDER BY r.id LIMIT -1 OFFSET ?2"
-    } else {
-        "SELECT i.resource_name,r.kind,r.version,r.semantic_json,(SELECT p.semantic_json FROM contact_revisions p WHERE p.contact_id=r.contact_id AND p.version=r.version-1) FROM contact_revisions r JOIN contact_identities i ON i.id=r.contact_id WHERE r.first_capture=?1 ORDER BY r.id"
-    };
-    let mut stmt = db.prepare(sql)?;
-    let rows = if offset > 0 {
-        stmt.query_map(params![sequence, offset], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, Option<String>>(4)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?
-    } else {
-        stmt.query_map(params![sequence], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, Option<String>>(4)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?
-    };
-    rows.into_iter()
-        .map(|(resource_name, kind, version, after, before)| {
-            Ok(ChangeRow {
-                resource_name,
-                kind: if kind == "deleted" {
-                    "removed".into()
-                } else if version == 1 {
-                    "added".into()
-                } else {
-                    "changed".into()
-                },
-                version,
-                before: before.map(|x| serde_json::from_str(&x)).transpose()?,
-                after: if kind == "deleted" {
-                    None
-                } else {
-                    Some(serde_json::from_str(&after)?)
-                },
-            })
-        })
-        .collect()
-}
-
-#[derive(serde::Serialize)]
-pub struct ContactHistoryEntry {
-    pub sequence: i64,
-    pub committed_at: String,
-    pub version: i64,
-    pub before: Option<Value>,
-    pub after: Option<Value>,
-}
-
-pub fn contact_history(store: &Store, account: &Account, resource: &str) -> Result<Vec<ContactHistoryEntry>> {
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let mut stmt = db.prepare(
-        "SELECT r.first_capture,c.committed_at,r.version,r.kind,r.semantic_json \
-         FROM contact_revisions r JOIN contact_identities i ON i.id=r.contact_id \
-         JOIN captures c ON c.sequence=r.first_capture \
-         WHERE i.resource_name=?1 ORDER BY r.version"
-    )?;
-    let rows = stmt.query_map(params![resource], |r| Ok((
-        r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?,
-        r.get::<_, String>(3)?, r.get::<_, String>(4)?
-    )))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut previous = None;
-    let mut history = Vec::new();
-    for (sequence, committed_at, version, kind, json) in rows {
-        let after = if kind == "deleted" { None } else { Some(serde_json::from_str::<Value>(&json)?) };
-        history.push(ContactHistoryEntry { sequence, committed_at, version, before: previous, after: after.clone() });
-        previous = after;
-    }
-    history.reverse();
-    Ok(history)
-}
-
-pub fn contact_at_snapshot(store: &Store, account: &Account, sequence: i64, resource: &str) -> Result<Option<ContactRow>> {
-    if sequence < 1 { bail!("invalid capture sequence"); }
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let row: Option<(String, i64)> = db.query_row(
-        "SELECT o.payload,r.version FROM capture_contacts c \
-         JOIN contact_identities i ON i.id=c.contact_id \
-         JOIN contact_revisions r ON r.id=c.revision_id \
-         JOIN captures p ON p.sequence=c.capture_sequence \
-         JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
-         WHERE c.capture_sequence=?1 AND i.resource_name=?2 AND r.kind='present'",
-        params![sequence, resource], |r| Ok((r.get(0)?, r.get(1)?))
-    ).optional()?;
-    row.map(|(payload, version)| {
-        let payload: Value = serde_json::from_str(&payload)?;
-        Ok(ContactRow { resource_name: resource.into(), display_name: name(&payload), payload, version })
-    }).transpose()
-}
-
-#[derive(Clone, Serialize)]
-pub struct ContactSnapshotEntry {
-    pub sequence: i64,
-    pub committed_at: String,
-    pub version: i64,
-}
-
-pub fn contact_snapshots(store: &Store, account: &Account, resource: &str) -> Result<Vec<ContactSnapshotEntry>> {
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let mut stmt = db.prepare(
-        "SELECT c.capture_sequence,p.committed_at,r.version FROM capture_contacts c \
-         JOIN contact_identities i ON i.id=c.contact_id \
-         JOIN contact_revisions r ON r.id=c.revision_id \
-         JOIN captures p ON p.sequence=c.capture_sequence \
-         WHERE i.resource_name=?1 AND r.kind='present' ORDER BY c.capture_sequence DESC"
-    )?;
-    let entries = stmt.query_map(params![resource], |row| Ok(ContactSnapshotEntry {
-        sequence: row.get(0)?, committed_at: row.get(1)?, version: row.get(2)?,
-    }))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(entries)
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct ChangelogEntry {
-    pub capture_sequence: i64,
-    pub committed_at: String,
-    pub resource_name: String,
-    pub kind: String,
-    pub version: i64,
-    pub before: Option<Value>,
-    pub after: Option<Value>,
-}
-
-pub fn all_changes(
-    store: &Store,
-    account: &Account,
-    limit: Option<i64>,
-    offset: Option<i64>,
-) -> Result<Vec<ChangelogEntry>> {
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let lim = limit.unwrap_or(2000);
-    let off = offset.unwrap_or(0);
-    let mut stmt = db.prepare(
-        "SELECT \
-            r.first_capture, \
-            c.committed_at, \
-            i.resource_name, \
-            r.kind, \
-            r.version, \
-            r.semantic_json, \
-            (SELECT p.semantic_json FROM contact_revisions p WHERE p.contact_id=r.contact_id AND p.version=r.version-1) \
-         FROM contact_revisions r \
-         JOIN contact_identities i ON i.id=r.contact_id \
-         JOIN captures c ON c.sequence=r.first_capture \
-         ORDER BY r.first_capture DESC, r.id DESC \
-         LIMIT ?1 OFFSET ?2"
-    )?;
-    let rows = stmt
-        .query_map(params![lim, off], |r| {
-            Ok((
-                r.get::<_, i64>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, i64>(4)?,
-                r.get::<_, String>(5)?,
-                r.get::<_, Option<String>>(6)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-
-    rows.into_iter()
-        .map(|(sequence, committed_at, resource_name, kind, version, after, before)| {
-            Ok(ChangelogEntry {
-                capture_sequence: sequence,
-                committed_at,
-                resource_name,
-                kind: if kind == "deleted" {
-                    "removed".into()
-                } else if version == 1 {
-                    "added".into()
-                } else {
-                    "changed".into()
-                },
-                version,
-                before: before.map(|x| serde_json::from_str(&x)).transpose()?,
-                after: if kind == "deleted" {
-                    None
-                } else {
-                    Some(serde_json::from_str(&after)?)
-                },
-            })
-        })
-        .collect()
-}
-
-pub fn compare_snapshots(
-    store: &Store,
-    account: &Account,
-    base_sequence: i64,
-    target_sequence: i64,
-) -> Result<Vec<ChangeRow>> {
-    if base_sequence < 1 || target_sequence < 1 {
-        bail!("invalid capture sequence for comparison");
-    }
-    if base_sequence == target_sequence {
-        return Ok(Vec::new());
-    }
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let mut stmt = db.prepare(
-        "SELECT \
-            i.resource_name, \
-            rb.version, rb.kind, rb.semantic_json, \
-            rt.version, rt.kind, rt.semantic_json \
-         FROM ( \
-            SELECT contact_id FROM capture_contacts WHERE capture_sequence = ?1 \
-            UNION \
-            SELECT contact_id FROM capture_contacts WHERE capture_sequence = ?2 \
-         ) u \
-         JOIN contact_identities i ON i.id = u.contact_id \
-         LEFT JOIN capture_contacts cb ON cb.capture_sequence = ?1 AND cb.contact_id = u.contact_id \
-         LEFT JOIN contact_revisions rb ON rb.id = cb.revision_id \
-         LEFT JOIN capture_contacts ct ON ct.capture_sequence = ?2 AND ct.contact_id = u.contact_id \
-         LEFT JOIN contact_revisions rt ON rt.id = ct.revision_id \
-         WHERE cb.revision_id IS NULL \
-            OR ct.revision_id IS NULL \
-            OR cb.revision_id != ct.revision_id \
-            OR rb.semantic_json != rt.semantic_json \
-         ORDER BY i.resource_name"
-    )?;
-
-    let rows = stmt
-        .query_map(params![base_sequence, target_sequence], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, Option<i64>>(1)?,
-                r.get::<_, Option<String>>(2)?,
-                r.get::<_, Option<String>>(3)?,
-                r.get::<_, Option<i64>>(4)?,
-                r.get::<_, Option<String>>(5)?,
-                r.get::<_, Option<String>>(6)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-
-    let mut changes = Vec::new();
-    for (res_name, base_ver, base_kind, base_json, target_ver, target_kind, target_json) in rows {
-        let base_active = base_kind.as_deref() == Some("present") && base_json.as_deref().is_some_and(|s| s != "{}");
-        let target_active = target_kind.as_deref() == Some("present") && target_json.as_deref().is_some_and(|s| s != "{}");
-
-        if !base_active && !target_active {
-            continue;
-        }
-
-        let kind = if !base_active && target_active {
-            "added".to_string()
-        } else if base_active && !target_active {
-            "removed".to_string()
-        } else {
-            "changed".to_string()
-        };
-
-        let before = if base_active {
-            base_json.as_deref().map(serde_json::from_str).transpose()?
-        } else {
-            None
-        };
-
-        let after = if target_active {
-            target_json.as_deref().map(serde_json::from_str).transpose()?
-        } else {
-            None
-        };
-
-        let version = target_ver.unwrap_or_else(|| base_ver.unwrap_or(1));
-
-        changes.push(ChangeRow {
-            resource_name: res_name,
-            kind,
-            version,
-            before,
-            after,
-        });
-    }
-
-    Ok(changes)
-}
-
-fn is_system_group(resource_name: &str, payload: &Value, name: &str) -> bool {
-    let trimmed_name = name.trim();
-    // Retain user's propercase "Family" label unless it's explicitly the system group
-    if trimmed_name == "Family" && !resource_name.to_ascii_lowercase().ends_with("/family") {
-        return false;
-    }
-
-    if payload.get("groupType").and_then(Value::as_str) == Some("SYSTEM_CONTACT_GROUP") {
-        return true;
-    }
-    let res = resource_name.to_ascii_lowercase();
-    if res.ends_with("/mycontacts")
-        || res.ends_with("/starred")
-        || res.ends_with("/all")
-        || res.ends_with("/blocked")
-        || res.ends_with("/chatbuddies")
-        || res.ends_with("/coworkers")
-        || res.ends_with("/family")
-        || res.ends_with("/friends")
-    {
-        return true;
-    }
-
-    // Ignore lowercase "family"
-    if trimmed_name == "family" {
-        return true;
-    }
-
-    let norm_name = trimmed_name.to_ascii_lowercase().replace(['-', '_', ' '], "");
-    matches!(
-        norm_name.as_str(),
-        "mycontacts"
-            | "starred"
-            | "all"
-            | "allcontacts"
-            | "blocked"
-            | "chatbuddies"
-            | "chatcontacts"
-            | "coworkers"
-            | "familyandfriends"
-            | "friends"
-    )
-}
-
-pub fn groups(store: &Store, account: &Account, sequence: i64) -> Result<Vec<GroupRow>> {
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let mut stmt = db.prepare(
-        "SELECT g.resource_name, r.payload \
-         FROM capture_groups g \
-         JOIN group_revisions r ON r.id = g.revision_id \
-         WHERE g.capture_sequence = ?1 \
-         ORDER BY g.resource_name",
-    )?;
-    let rows = stmt.query_map([sequence], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-    })?;
-    let mut out = Vec::new();
-    for row in rows {
-        let (resource_name, payload_str) = row?;
-        let payload: Value = serde_json::from_str(&payload_str)?;
-        let name = payload
-            .get("name")
-            .and_then(Value::as_str)
-            .or_else(|| payload.get("formattedName").and_then(Value::as_str))
-            .unwrap_or(&resource_name)
-            .to_string();
-
-        if is_system_group(&resource_name, &payload, &name) {
-            continue;
-        }
-
-        let member_count = payload.get("memberCount").and_then(Value::as_i64);
-        out.push(GroupRow {
-            resource_name,
-            name,
-            member_count,
-        });
-    }
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    Ok(out)
-}
-
-pub fn contacts(
-    store: &Store,
-    account: &Account,
-    sequence: i64,
-    search: &str,
-    group: Option<&str>,
-    _offset: i64,
-) -> Result<Vec<ContactRow>> {
-    if sequence < 1 {
-        bail!("invalid capture sequence");
-    }
-    let db = store.open_db(&account.id)?;
-    store.verify(account, &db)?;
-    let clean_search = search.trim();
-    let rows = match (clean_search.is_empty(), group) {
-        (true, None) => {
-            let mut stmt = db.prepare(
-                "SELECT i.resource_name,o.payload,r.version \
-                 FROM capture_contacts c \
-                 JOIN contact_identities i ON i.id=c.contact_id \
-                 JOIN contact_revisions r ON r.id=c.revision_id \
-                 JOIN captures p ON p.sequence=c.capture_sequence \
-                 JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
-                 WHERE c.capture_sequence=?1 AND r.kind='present' \
-                 ORDER BY i.resource_name",
-            )?;
-            let rows = stmt.query_map([sequence], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)?,
-                ))
-            })?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()?
-        }
-        (true, Some(grp)) => {
-            let grp_pattern = format!("%{}%", grp.replace('%', "\\%").replace('_', "\\_"));
-            let mut stmt = db.prepare(
-                "SELECT i.resource_name,o.payload,r.version \
-                 FROM capture_contacts c \
-                 JOIN contact_identities i ON i.id=c.contact_id \
-                 JOIN contact_revisions r ON r.id=c.revision_id \
-                 JOIN captures p ON p.sequence=c.capture_sequence \
-                 JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
-                 WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' \
-                 ORDER BY i.resource_name",
-            )?;
-            let rows = stmt.query_map(params![sequence, grp_pattern], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)?,
-                ))
-            })?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()?
-        }
-        (false, None) => {
-            let pattern = format!("%{}%", clean_search.replace('%', "\\%").replace('_', "\\_"));
-            let mut stmt = db.prepare(
-                "SELECT i.resource_name,o.payload,r.version \
-                 FROM capture_contacts c \
-                 JOIN contact_identities i ON i.id=c.contact_id \
-                 JOIN contact_revisions r ON r.id=c.revision_id \
-                 JOIN captures p ON p.sequence=c.capture_sequence \
-                 JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
-                 WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' \
-                 ORDER BY i.resource_name",
-            )?;
-            let rows = stmt.query_map(params![sequence, pattern], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)?,
-                ))
-            })?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()?
-        }
-        (false, Some(grp)) => {
-            let pattern = format!("%{}%", clean_search.replace('%', "\\%").replace('_', "\\_"));
-            let grp_pattern = format!("%{}%", grp.replace('%', "\\%").replace('_', "\\_"));
-            let mut stmt = db.prepare(
-                "SELECT i.resource_name,o.payload,r.version \
-                 FROM capture_contacts c \
-                 JOIN contact_identities i ON i.id=c.contact_id \
-                 JOIN contact_revisions r ON r.id=c.revision_id \
-                 JOIN captures p ON p.sequence=c.capture_sequence \
-                 JOIN raw_observations o ON o.run_id=p.run_id AND o.resource_name=i.resource_name \
-                 WHERE c.capture_sequence=?1 AND r.kind='present' AND o.payload LIKE ?2 ESCAPE '\\' AND o.payload LIKE ?3 ESCAPE '\\' \
-                 ORDER BY i.resource_name",
-            )?;
-            let rows = stmt.query_map(params![sequence, pattern, grp_pattern], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, i64>(2)?,
-                ))
-            })?;
-            rows.collect::<rusqlite::Result<Vec<_>>>()?
-        }
-    };
-    rows.into_iter()
-        .map(|(resource_name, payload, version)| {
-            let value: Value = serde_json::from_str(&payload)?;
-            Ok(ContactRow {
-                display_name: name(&value),
-                resource_name,
-                payload: value,
-                version,
-            })
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn setup() -> (tempfile::TempDir, Store, Account) {
-        let temp = tempfile::tempdir().unwrap();
-        let store = Store::new(temp.path().to_path_buf()).unwrap();
-        let account = store
-            .add_account("stable-subject", "a@example.com")
-            .unwrap();
-        (temp, store, account)
-    }
-    fn scan(contacts: Vec<Value>) -> Scan {
-        Scan {
-            contacts,
-            groups: vec![],
-            next_sync_token: Some("cursor".into()),
-            full_sync_at: None,
-            media: vec![],
-        }
-    }
-    #[test]
-    fn contact_timeline_tracks_edits_deletion_restoration_and_isolation() {
-        let (_temp, store, account) = setup();
-        let first = json!({"resourceName":"people/timeline","names":[{"displayName":"Ada"}],"phoneNumbers":[{"value":"+442079460018"}]});
-        let edited = json!({"resourceName":"people/timeline","names":[{"displayName":"Ada Lovelace"}],"phoneNumbers":[{"value":"+442079460019"}]});
-        publish(&store, &account, scan(vec![first]), "fixture").unwrap();
-        publish(&store, &account, scan(vec![edited.clone()]), "fixture").unwrap();
-        publish(&store, &account, scan(vec![]), "fixture").unwrap();
-        publish(&store, &account, scan(vec![edited]), "fixture").unwrap();
-        let history = contact_history(&store, &account, "people/timeline").unwrap();
-        assert_eq!(history.len(), 4);
-        assert!(history[0].before.is_none());
-        assert!(history[0].after.is_some());
-        assert!(history[1].after.is_none());
-        assert!(history[1].before.is_some());
-        assert_eq!(history[2].before.as_ref().unwrap()["names"][0]["displayName"], "Ada");
-        assert_eq!(history[2].after.as_ref().unwrap()["names"][0]["displayName"], "Ada Lovelace");
-        assert!(history[3].before.is_none());
-        assert!(history.windows(2).all(|pair| pair[0].sequence > pair[1].sequence));
-        let other = store.add_account("timeline-other", "other@example.com").unwrap();
-        assert!(contact_history(&store, &other, "people/timeline").unwrap().is_empty());
-        assert!(contact_history(&store, &account, "missing").unwrap().is_empty());
-    }
-
-    #[test]
-    fn preserves_deleted_history_and_account_isolation() {
-        let (_temp, store, account) = setup();
-        let first=publish(&store,&account,scan(vec![json!({"resourceName":"people/1","names":[{"displayName":"Ada"}],"emailAddresses":[{"value":"a@example.com"}]})]),"fixture").unwrap();
-        let second = publish(&store, &account, scan(vec![]), "fixture").unwrap();
-        assert_eq!(
-            contacts(&store, &account, first.sequence, "", None, 0)
-                .unwrap()
-                .len(),
-            1
-        );
-        assert!(contacts(&store, &account, second.sequence, "", None, 0)
-            .unwrap()
-            .is_empty());
-        let db = store.open_db(&account.id).unwrap();
-        let revisions: i64 = db
-            .query_row("SELECT COUNT(*) FROM contact_revisions", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(revisions, 2);
-        let other = store.add_account("another", "b@example.com").unwrap();
-        assert!(captures(&store, &other).unwrap().is_empty());
-    }
-    #[test]
-    fn unchanged_transport_data_reuses_revision() {
-        let (_temp, store, account) = setup();
-        let one = json!({"resourceName":"people/1","etag":"old","names":[{"displayName":"Ada"}],"emailAddresses":[{"value":"a@example.com"},{"value":"other@example.com"}]});
-        let two = json!({"resourceName":"people/1","etag":"new","names":[{"displayName":"Ada"}],"emailAddresses":[{"value":"other@example.com"},{"value":"a@example.com"}]});
-        publish(&store, &account, scan(vec![one]), "fixture").unwrap();
-        publish(&store, &account, scan(vec![two]), "fixture").unwrap();
-        let db = store.open_db(&account.id).unwrap();
-        let revisions: i64 = db
-            .query_row("SELECT COUNT(*) FROM contact_revisions", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(revisions, 1);
-        let raw: i64 = db
-            .query_row("SELECT COUNT(*) FROM raw_observations", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(raw, 2);
-    }
-    #[test]
-    fn invalid_scan_does_not_publish_or_advance_cursor() {
-        let (_temp, store, account) = setup();
-        publish(
-            &store,
-            &account,
-            scan(vec![json!({"resourceName":"people/1"})]),
-            "fixture",
-        )
-        .unwrap();
-        assert!(publish(&store, &account, scan(vec![json!({"names":[]})]), "fixture").is_err());
-        assert_eq!(captures(&store, &account).unwrap().len(), 1);
-        let db = store.open_db(&account.id).unwrap();
-        let status: String = db
-            .query_row(
-                "SELECT result FROM capture_runs ORDER BY started_at DESC LIMIT 1",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert!(status == "success" || status == "failed");
-    }
-
-    #[test]
-    fn failed_media_does_not_block_text_capture() {
-        let (_temp, store, account) = setup();
-        let mut observation = scan(vec![
-            json!({"resourceName":"people/photo","names":[{"displayName":"Photo contact"}],"photos":[{"url":"https://lh3.googleusercontent.com/example"}]}),
-        ]);
-        observation
-            .media
-            .push(crate::core::media::MediaObservation {
-                resource_name: "people/photo".into(),
-                source_url: "https://lh3.googleusercontent.com/example".into(),
-                status: "failed".into(),
-                sha256: None,
-                mime: None,
-                byte_length: None,
-                retrieved_at: None,
-            });
-        let saved = publish(&store, &account, observation, "fixture").unwrap();
-        assert!(!saved.media_complete);
-        assert_eq!(
-            contacts(&store, &account, saved.sequence, "Photo", None, 0)
-                .unwrap()
-                .len(),
-            1
-        );
-        let db = store.open_db(&account.id).unwrap();
-        let pending: i64 = db
-            .query_row(
-                "SELECT COUNT(*) FROM media_jobs WHERE status='pending'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(pending, 1);
-    }
-
-    #[test]
-    fn date_selection_and_change_feed_follow_committed_captures() {
-        let (_temp, store, account) = setup();
-        assert!(capture_at(&store, &account, "2000-01-01T00:00:00Z")
-            .unwrap()
-            .is_none());
-        let _first = publish(
-            &store,
-            &account,
-            scan(vec![
-                json!({"resourceName":"people/1","names":[{"displayName":"Ada"}]}),
-            ]),
-            "fixture",
-        )
-        .unwrap();
-        let second = publish(
-            &store,
-            &account,
-            scan(vec![
-                json!({"resourceName":"people/1","names":[{"displayName":"Ada L."}]}),
-            ]),
-            "fixture",
-        )
-        .unwrap();
-        assert_eq!(
-            capture_at(&store, &account, &second.committed_at)
-                .unwrap()
-                .unwrap()
-                .sequence,
-            second.sequence
-        );
-        let changes = changes(&store, &account, second.sequence, 0).unwrap();
-        assert_eq!(changes.len(), 1);
-        assert_eq!(changes[0].kind, "changed");
-        assert_eq!(
-            changes[0].before.as_ref().unwrap()["names"][0]["displayName"],
-            "Ada"
-        );
-        assert_eq!(
-            changes[0].after.as_ref().unwrap()["names"][0]["displayName"],
-            "Ada L."
-        );
-    }
-    #[test]
-    fn compare_snapshots_identifies_diffs_across_arbitrary_captures() {
-        let (_temp, store, account) = setup();
-        let cap1 = publish(
-            &store,
-            &account,
-            scan(vec![
-                json!({"resourceName":"people/1","names":[{"displayName":"Alice"}]}),
-                json!({"resourceName":"people/2","names":[{"displayName":"Bob"}]}),
-            ]),
-            "fixture",
-        )
-        .unwrap();
-
-        let cap2 = publish(
-            &store,
-            &account,
-            scan(vec![
-                json!({"resourceName":"people/1","names":[{"displayName":"Alice Smith"}]}),
-                json!({"resourceName":"people/2","names":[{"displayName":"Bob"}]}),
-                json!({"resourceName":"people/3","names":[{"displayName":"Charlie"}]}),
-            ]),
-            "fixture",
-        )
-        .unwrap();
-
-        let cap3 = publish(
-            &store,
-            &account,
-            scan(vec![
-                json!({"resourceName":"people/1","names":[{"displayName":"Alice Smith"}]}),
-                json!({"resourceName":"people/3","names":[{"displayName":"Charlie Brown"}]}),
-            ]),
-            "fixture",
-        )
-        .unwrap();
-
-        // Compare cap1 to cap3 directly
-        let diff = compare_snapshots(&store, &account, cap1.sequence, cap3.sequence).unwrap();
-        assert_eq!(diff.len(), 3);
-        let p1 = diff.iter().find(|c| c.resource_name == "people/1").unwrap();
-        assert_eq!(p1.kind, "changed");
-        let p2 = diff.iter().find(|c| c.resource_name == "people/2").unwrap();
-        assert_eq!(p2.kind, "removed");
-        let p3 = diff.iter().find(|c| c.resource_name == "people/3").unwrap();
-        assert_eq!(p3.kind, "added");
-
-        // Identity comparison returns empty
-        let same = compare_snapshots(&store, &account, cap2.sequence, cap2.sequence).unwrap();
-        assert!(same.is_empty());
-    }
 }

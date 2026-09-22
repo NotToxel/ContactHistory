@@ -1,0 +1,465 @@
+/* Contact Rows */
+.contact-row {
+  height: 58px;
+  border-bottom: 1px solid var(--google-border-subtle);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.contact-row:hover {
+  background-color: var(--google-surface-hover);
+}
+
+.contact-row td {
+  padding: 10px 16px;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--google-text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.contact-row td:first-child {
+  color: var(--google-text);
+}
+
+/* Name cell */
+.name-cell-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.star-btn {
+  background: transparent;
+  border: none;
+  color: var(--google-text-tertiary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  padding: 0;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.star-btn:hover {
+  background-color: var(--google-surface-active);
+  color: var(--google-text);
+}
+
+.star-btn.starred {
+  color: var(--favorite);
+}
+
+.star-btn.starred .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1;
+}
+
+/* Avatar and Selection Checkbox */
+.avatar-select-container {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.avatar-select-container:hover {
+  background-color: var(--google-surface-hover);
+}
+
+.avatar-select-container:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: 2px;
+}
+
+.avatar-circle {
+  position: absolute;
+  inset: 0;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  background-color: var(--google-blue-pill);
+  color: var(--google-blue-container);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  font-size: 13px;
+  z-index: 1;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.contact-select-checkbox {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 2px solid var(--google-text-secondary);
+  background-color: var(--surface-base);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.8);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.contact-select-checkbox .check-icon {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.contact-row:hover .avatar-select-container .avatar-circle,
+.avatar-select-container:hover .avatar-circle,
+.avatar-select-container:focus-visible .avatar-circle,
+.avatar-select-container.selected .avatar-circle {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.85);
+}
+
+.contact-row:hover .avatar-select-container .contact-select-checkbox,
+.avatar-select-container:hover .contact-select-checkbox,
+.avatar-select-container:focus-visible .contact-select-checkbox,
+.avatar-select-container.selected .contact-select-checkbox,
+.contact-select-checkbox.checked {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
+
+.avatar-select-container:hover .contact-select-checkbox:not(.checked) {
+  border-color: var(--google-text);
+}
+
+.contact-select-checkbox.checked {
+  background-color: var(--google-blue) !important;
+  border-color: var(--google-blue) !important;
+  color: #ffffff;
+}
+
+.contact-row.is-selected {
+  background-color: var(--google-blue-surface) !important;
+}
+
+:root[data-theme='dark'] .contact-row.is-selected {
+  background-color: rgba(138, 180, 248, 0.16) !important;
+}
+
+:root[data-theme='dark'] .contact-select-checkbox {
+  background-color: var(--surface-base);
+  border-color: var(--google-text-secondary);
+}
+
+/* Header master checkbox */
+.th-master-checkbox {
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.th-master-checkbox:hover {
+  background-color: var(--google-surface-hover);
+}
+
+.th-master-checkbox::before {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border-radius: 2px;
+  border: 2px solid var(--google-text-secondary);
+  background-color: var(--surface-base);
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.th-master-checkbox.checked::before,
+.th-master-checkbox.indeterminate::before {
+  background-color: var(--google-blue);
+  border-color: var(--google-blue);
+}
+
+.th-master-checkbox .check-icon {
+  position: absolute;
+  font-size: 16px;
+  color: #ffffff;
+  font-weight: 700;
+  user-select: none;
+  pointer-events: none;
+}
+
+.avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.avatar-img.avatar-img-failed,
+.hero-avatar img.avatar-img-failed {
+  display: none !important;
+}
+
+.name-text {
+  font-weight: 500;
+  color: var(--google-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Label Chips in Table */
+.contact-row td.labels-cell {
+  overflow: hidden;
+  max-width: 0;
+  padding: 6px 14px;
+}
+
+.labels-container {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  gap: 6px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  max-width: 100% !important;
+  padding-bottom: 3px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--google-border) transparent;
+}
+
+.labels-container::-webkit-scrollbar {
+  display: block;
+  height: 8px;
+}
+
+.labels-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.labels-container::-webkit-scrollbar-thumb {
+  background: var(--google-border);
+  border-radius: 4px;
+}
+
+.labels-container::-webkit-scrollbar-thumb:hover {
+  background: var(--google-text-secondary);
+}
+
+.labels-container .label-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  min-height: 26px;
+  max-height: 26px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--google-border);
+  background-color: var(--surface-base);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1;
+  color: var(--google-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.05s;
+}
+
+.labels-container .label-chip:hover {
+  background-color: var(--google-surface-hover);
+  border-color: var(--google-blue);
+  color: var(--google-text);
+}
+
+.labels-container .label-chip:active {
+  transform: scale(0.97);
+}
+
+.labels-container .label-chip:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: 1px;
+}
+
+.labels-container .label-chip.active {
+  background-color: var(--google-blue-surface);
+  border-color: var(--google-blue);
+  color: var(--google-blue);
+  font-weight: 600;
+}
+
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--google-border);
+  background-color: var(--surface-base);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1;
+  color: var(--google-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.05s;
+}
+
+.label-chip:hover {
+  background-color: var(--google-surface-hover);
+  border-color: var(--google-blue);
+  color: var(--google-text);
+}
+
+.label-chip:active {
+  transform: scale(0.97);
+}
+
+.label-chip:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: 1px;
+}
+
+.label-chip.active {
+  background-color: var(--google-blue-surface);
+  border-color: var(--google-blue);
+  color: var(--google-blue);
+  font-weight: 600;
+}
+
+/* Table Cell Content, Links, and Copy Buttons */
+.table-cell-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.table-cell-text,
+.table-cell-link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-cell-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.table-cell-link:hover {
+  color: var(--google-blue);
+  text-decoration: underline;
+}
+
+.table-cell-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--google-blue);
+  opacity: 0;
+  visibility: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.table-cell-copy-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.table-cell-content:hover .table-cell-copy-btn,
+.table-cell-content:focus-within .table-cell-copy-btn {
+  opacity: 1;
+  visibility: visible;
+}
+
+.table-cell-copy-btn:hover {
+  background: var(--google-blue-surface);
+  color: var(--google-blue);
+}
+
+.table-cell-copy-btn.copied {
+  color: var(--google-green, #1e8e3e);
+  background-color: rgba(30, 142, 62, 0.12);
+}
+
+.table-cell-copy-btn:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: 1px;
+}

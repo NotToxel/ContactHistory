@@ -313,6 +313,15 @@ async fn export_capture(
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+async fn save_contact_export(destination: String, content: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::write(&destination, content)
+            .map_err(|e| format!("Could not save export to {destination}: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
 async fn export_photos(
     app: tauri::AppHandle,
     account_id: String,
@@ -320,6 +329,9 @@ async fn export_photos(
     destination: String,
     format: String,
     include_default: bool,
+    resource_names: Option<Vec<String>>,
+    size: Option<u32>,
+    image_format: Option<String>,
 ) -> Result<photo_export::PhotoExportResult, String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<photo_export::PhotoExportResult, String> {
         let store = store()?;
@@ -343,6 +355,9 @@ async fn export_photos(
             std::path::Path::new(&destination),
             &format,
             include_default,
+            resource_names.as_deref(),
+            size,
+            image_format.as_deref().unwrap_or("original"),
             emit,
         ))
     })
@@ -487,6 +502,7 @@ pub fn run() {
             enable_schedule,
             disable_schedule,
             export_capture,
+            save_contact_export,
             export_photos,
             export_single_photo,
             single_photo_quality,

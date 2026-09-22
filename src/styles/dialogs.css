@@ -1,0 +1,321 @@
+/* Modals and Popovers */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(32, 33, 36, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+  animation: fadeIn 0.15s ease-out;
+}
+
+.modal-dialog {
+  background: var(--surface-base);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.25);
+  width: 90%;
+  max-width: 520px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.2s ease-out;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--google-border);
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--google-text);
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--google-border);
+  background: var(--google-surface);
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--google-border);
+  color: var(--google-text);
+  padding: 8px 18px;
+  border-radius: 18px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-secondary:hover {
+  background-color: var(--google-surface-hover);
+}
+
+.btn-primary {
+  background: var(--google-blue);
+  border: none;
+  color: var(--on-accent);
+  padding: 8px 22px;
+  border-radius: 18px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-primary:hover {
+  background-color: var(--google-blue-hover);
+}
+
+/* Field icon spacer — same width as field-icon, no content, for grouped multi-row fields */
+.field-icon-spacer {
+  width: 24px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* Multi-line field items (e.g. address) */
+.field-item--multiline {
+  align-items: flex-start;
+  padding: 7px 0;
+}
+
+/* Column layout for field-content when address is multi-line */
+.field-content--column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex-wrap: nowrap;
+}
+
+.field-address-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0px;
+}
+
+.field-address-line {
+  line-height: 1.5;
+}
+
+.field-content--address {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.field-address-text {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  width: max-content;
+  min-width: 0;
+}
+
+.field-address-text > .field-address-link {
+  max-width: 100%;
+}
+
+.field-address-last-line {
+  display: flex;
+  align-items: flex-end;
+  align-items: last baseline;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.field-address-last-line > .field-address-link {
+  min-width: 0;
+}
+
+.field-address-last-line .field-meta {
+  flex: none;
+  line-height: 1.55;
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field-address-actions {
+  align-self: center;
+  flex: none;
+}
+
+/* Photos Modal (Google Contacts Authentic) */
+.photos-dialog {
+  max-width: 540px;
+  width: 90%;
+  border-radius: 28px !important;
+  box-shadow: 0 16px 48px rgba(32, 33, 36, 0.28) !important;
+  background-color: var(--surface-base);
+  overflow: visible !important;
+}
+
+.photos-modal-header {
+  border-bottom: none !important;
+  padding: 24px 28px 12px 28px;
+}
+
+.photos-modal-header .modal-title {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--google-text);
+  letter-spacing: -0.2px;
+}
+
+.photos-modal-body {
+  padding: 12px 28px 36px 28px;
+  user-select: none;
+  overflow: visible;
+}
+
+.photos-modal-grid {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 36px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+
+.photo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  cursor: default;
+  outline: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.photo-circle {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--google-surface-hover);
+  box-shadow: 0 1px 4px rgba(60, 64, 67, 0.2);
+}
+
+.photo-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.photo-circle.empty-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 54px;
+  font-weight: 500;
+}
+
+.photo-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.photo-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--google-text);
+}
+
+/* Info icon next to Google profile photo label */
+.photo-info-icon {
+  font-size: 18px;
+  color: var(--google-text-secondary);
+  cursor: pointer;
+  vertical-align: middle;
+  line-height: 1;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.photo-info-icon:hover {
+  color: var(--google-text);
+}
+
+/* Popover tooltip rendered inside the fixed overlay — never clipped */
+.photo-info-popover {
+  position: fixed;
+  transform: translateX(-50%) translateY(-100%);
+  background-color: rgba(32, 33, 36, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  max-width: 240px;
+  white-space: normal;
+  text-align: center;
+  pointer-events: none;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.28),
+    0 1px 4px rgba(0, 0, 0, 0.14);
+  z-index: 99999;
+  animation: fadeIn 0.12s ease-out;
+}
+
+:root[data-theme='dark'] .photo-info-popover {
+  background-color: rgba(235, 238, 243, 0.96);
+  color: #1f1f1f;
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    0 1px 5px rgba(0, 0, 0, 0.3);
+}
+
+.photos-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.photos-empty-text {
+  font-size: 14px;
+  color: var(--google-text-secondary);
+  margin-top: 12px;
+}

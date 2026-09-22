@@ -1,0 +1,88 @@
+/* Dark Mode Harmonization */
+:root[data-theme='dark'] .filter-contacts-bar {
+  background-color: var(--surface-base);
+}
+
+:root[data-theme='dark'] .sidebar-header-badge {
+  background-color: rgba(138, 180, 248, 0.14);
+  color: #8ab4f8;
+  border-color: rgba(138, 180, 248, 0.28);
+}
+
+:root[data-theme='dark'] .sidebar-header-clear {
+  color: #8ab4f8;
+}
+
+:root[data-theme='dark'] .sidebar-header-clear:hover {
+  background-color: rgba(138, 180, 248, 0.1);
+}
+
+:root[data-theme='dark'] .filter-contacts-bar {
+  background-color: var(--surface-base);
+}
+
+:root[data-theme='dark'] .filter-bar-lead,
+:root[data-theme='dark'] .filter-bar-lead .filter-lead-icon,
+:root[data-theme='dark'] .filter-bar-lead .filter-lead-label {
+  color: var(--google-text-secondary);
+}
+
+:root[data-theme='dark'] .filter-chip {
+  background-color: rgba(138, 180, 248, 0.12);
+  border-color: rgba(138, 180, 248, 0.3);
+  color: #8ab4f8;
+}
+
+:root[data-theme='dark'] .filter-chip-icon {
+  color: #8ab4f8;
+}
+
+:root[data-theme='dark'] .filter-chip-remove {
+  color: #8ab4f8;
+}
+
+:root[data-theme='dark'] .filter-chip-remove:hover {
+  background-color: rgba(138, 180, 248, 0.22);
+}
+
+:root[data-theme='dark'] .match-mode-segmented-control {
+  background-color: var(--surface-base);
+  border-color: var(--google-border);
+}
+
+:root[data-theme='dark'] .match-mode-segmented-control .segmented-btn.active {
+  background-color: rgba(138, 180, 248, 0.18);
+  color: #8ab4f8;
+}
+
+:root[data-theme='dark'] .filter-bar-divider {
+  background-color: var(--google-border);
+}
+
+:root[data-theme='dark'] .filter-clear-all-btn {
+  background-color: var(--surface-base);
+  border-color: var(--google-border);
+  color: var(--google-text-secondary);
+}
+
+:root[data-theme='dark'] .filter-clear-all-btn:hover {
+  background-color: var(--google-surface-hover);
+  color: #8ab4f8;
+  border-color: #8ab4f8;
+}
+
+:root[data-theme='dark'] .table-selection-row {
+  background-color: var(--surface-base);
+  border-color: var(--google-border);
+}
+
+:root[data-theme='dark'] .selection-dropdown-menu {
+  background-color: var(--surface-base);
+  border-color: var(--google-border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme='dark'] .avatar-select-container .contact-select-checkbox {
+  background-color: var(--surface-base);
+  border-color: var(--google-text-secondary);
+}

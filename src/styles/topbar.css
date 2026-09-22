@@ -1,0 +1,207 @@
+/* Topbar right actions */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-right: 8px;
+}
+
+/* Timeline Snapshot Chip */
+.snapshot-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--google-surface);
+  border: 1px solid var(--google-border);
+  border-radius: 18px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--google-text);
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.snapshot-chip:hover {
+  background-color: var(--google-surface-hover);
+  border-color: var(--control-border);
+}
+
+.snapshot-chip .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--google-blue);
+}
+
+.snapshot-dropdown-container {
+  position: relative;
+  display: inline-flex;
+}
+
+.snapshot-dropdown-container > .snapshot-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 0;
+  border-radius: 16px;
+  background: var(--surface-base);
+  border: 1px solid var(--google-border);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.24);
+  z-index: 105;
+}
+
+.popover-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--google-text);
+  border-bottom: 1px solid var(--google-border-subtle);
+}
+
+.popover-count-tag {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--google-text-secondary);
+  background: var(--google-surface);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.snapshot-popover-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.snapshot-popover-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.12s ease;
+  font-family: inherit;
+}
+
+.snapshot-popover-item:hover {
+  background: var(--google-surface-hover);
+}
+
+.snapshot-popover-item.selected {
+  background: var(--google-blue-surface);
+}
+
+.snapshot-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.snapshot-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--google-text);
+}
+
+.snapshot-item-date {
+  font-size: 11px;
+  color: var(--google-text-secondary);
+}
+
+.snapshot-item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.snapshot-item-badge {
+  font-size: 11px;
+  color: var(--google-text-secondary);
+  background: var(--google-surface);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.snapshot-active-check {
+  font-size: 18px;
+  color: var(--google-blue);
+}
+
+.account-avatar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--surface-base);
+  background-color: var(--google-blue-pill);
+  color: var(--google-blue-container);
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--google-border);
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.topbar-avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* Native Window Controls */
+.window-controls {
+  display: flex;
+  align-items: center;
+  height: var(--topbar-height);
+  margin-left: 8px;
+}
+
+.win-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--google-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+
+.win-btn:hover {
+  background-color: var(--google-surface-hover);
+  color: var(--google-text);
+}
+
+.win-btn.win-close:hover {
+  background-color: #e81123;
+  color: var(--on-accent);
+}

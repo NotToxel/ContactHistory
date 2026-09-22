@@ -1,0 +1,85 @@
+/* Google Contacts Complete Design System */
+:root {
+  --google-blue: #185abc;
+  --google-blue-hover: #1557b0;
+  --google-blue-surface: #e8f0fe;
+  --google-blue-pill: #c2e7ff;
+  --google-blue-container: #001d35;
+  --google-surface: #f6f8fc;
+  --google-surface-hover: #f1f3f4;
+  --google-surface-active: #e2e7eb;
+  --google-text: #202124;
+  --google-text-secondary: #5f6368;
+  --google-text-tertiary: #626970;
+  --google-border: #dadce0;
+  --google-border-subtle: #f1f3f4;
+  --google-danger: #b3261e;
+  --google-danger-hover: #b3261e;
+  --google-danger-surface: #fce8e6;
+  --surface-base: #ffffff;
+  --on-accent: #ffffff;
+  --control-border: #747b84;
+  --success-surface: #e6f4ea;
+  --success-text: #137333;
+  --favorite: #8a5900;
+  --google-surface-container: #f0f4f9;
+  color-scheme: light;
+  --font-family:
+    'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial,
+    sans-serif;
+  --topbar-height: 64px;
+  --sidebar-width: 280px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: var(--font-family);
+  color: var(--google-text);
+  background-color: var(--surface-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+button,
+input,
+optgroup,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+/* Material Symbols icon style */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: 'liga';
+  vertical-align: middle;
+}
+
+.icon-filled {
+  font-variation-settings: 'FILL' 1;
+}

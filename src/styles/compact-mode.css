@@ -1,0 +1,78 @@
+/* Compact Density Harmonization */
+:root[data-density='compact'] .view-header.has-filter-bar {
+  padding-bottom: 2px;
+}
+
+:root[data-density='compact'] .filter-contacts-bar {
+  padding: 0 16px 6px 16px;
+  gap: 6px;
+}
+
+:root[data-density='compact'] .filter-chip {
+  height: 24px;
+  padding: 0 4px 0 7px;
+  font-size: 11px;
+  border-radius: 5px;
+}
+
+:root[data-density='compact'] .filter-chip-icon {
+  font-size: 13px;
+}
+
+:root[data-density='compact'] .filter-chip-remove {
+  width: 16px;
+  height: 16px;
+}
+
+:root[data-density='compact'] .filter-chip-remove span {
+  font-size: 12px;
+}
+
+:root[data-density='compact'] .match-mode-segmented-control {
+  height: 24px;
+  border-radius: 5px;
+}
+
+:root[data-density='compact'] .match-mode-segmented-control .segmented-btn {
+  padding: 0 8px;
+  min-width: 58px;
+  font-size: 10.5px;
+}
+
+:root[data-density='compact'] .filter-bar-divider {
+  height: 14px;
+}
+
+:root[data-density='compact'] .filter-clear-all-btn {
+  height: 24px;
+  padding: 0 7px 0 5px;
+  font-size: 10.5px;
+  border-radius: 5px;
+}
+
+:root[data-density='compact'] .filter-clear-all-btn span.material-symbols-outlined {
+  font-size: 13px;
+}
+
+:root[data-density='compact'] .table-selection-row {
+  height: 40px;
+}
+
+:root[data-density='compact'] .table-selection-th {
+  height: 40px;
+}
+
+:root[data-density='compact'] .avatar-select-container {
+  width: 28px;
+  height: 28px;
+}
+
+:root[data-density='compact'] .avatar-select-container .avatar-circle {
+  width: 28px;
+  height: 28px;
+}
+
+:root[data-density='compact'] .avatar-select-container .contact-select-checkbox {
+  width: 16px;
+  height: 16px;
+}

@@ -1,0 +1,218 @@
+/* App Container */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--surface-base);
+  overflow: hidden;
+}
+
+/* Top Navigation Bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  height: var(--topbar-height);
+  min-height: var(--topbar-height);
+  padding: 0 0 0 16px;
+  background-color: var(--surface-base);
+  border-bottom: 1px solid var(--google-border-subtle);
+  position: relative;
+  z-index: 100;
+  gap: 16px;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.topbar-drag-area {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: drag;
+  cursor: default;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 240px;
+  -webkit-app-region: drag;
+}
+
+.topbar button,
+.topbar input,
+.topbar a,
+.topbar .window-controls,
+.topbar-search,
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--google-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+  -webkit-app-region: no-drag;
+}
+
+.icon-btn:hover {
+  background-color: var(--google-surface-hover);
+  color: var(--google-text);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.icon-btn:disabled:hover {
+  background: transparent;
+  color: var(--google-text-secondary);
+}
+
+.icon-btn.active {
+  background-color: var(--google-blue-surface);
+  color: var(--google-blue);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.brand-icon-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  background-color: var(--google-blue);
+  color: var(--on-accent);
+  border-radius: 50%;
+}
+
+.brand-icon-circle .material-symbols-outlined {
+  font-size: 22px;
+}
+
+.app-title {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--google-text);
+  letter-spacing: -0.2px;
+}
+
+.topbar-search-container {
+  position: relative;
+  flex: 0 1 580px;
+  width: 100%;
+  max-width: 580px;
+  margin: 0 auto;
+  -webkit-app-region: no-drag;
+}
+
+.topbar-drag-spacer {
+  flex: 1 1 20px;
+  min-width: 12px;
+  height: 100%;
+  cursor: default;
+  -webkit-app-region: drag;
+}
+
+.topbar-drag-spacer-sm {
+  width: 12px;
+  height: 100%;
+  cursor: default;
+  -webkit-app-region: drag;
+}
+
+.topbar-search {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  background-color: var(--google-surface);
+  border-radius: 24px;
+  padding: 0 16px;
+  height: 48px;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    border-radius 0.15s ease;
+  position: relative;
+  z-index: 102;
+  box-sizing: border-box;
+}
+
+.topbar-search:focus-within {
+  background-color: var(--surface-base);
+  box-shadow:
+    0 1px 3px 0 rgba(60, 64, 67, 0.3),
+    0 4px 8px 3px rgba(60, 64, 67, 0.15);
+}
+
+.topbar-search-container.has-dropdown .topbar-search,
+.topbar-search.dropdown-open {
+  background-color: var(--surface-base);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  box-shadow:
+    0 1px 3px 0 rgba(60, 64, 67, 0.3),
+    0 4px 8px 3px rgba(60, 64, 67, 0.15);
+}
+
+.search-icon {
+  color: var(--google-text-secondary);
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+
+.search-input,
+input.search-input,
+input.search-input:focus,
+input.search-input:focus-visible {
+  flex: 1;
+  border: none !important;
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+  font-family: inherit;
+  font-size: 16px;
+  color: var(--google-text);
+  min-width: 0;
+}
+
+.search-input::placeholder {
+  color: var(--google-text-secondary);
+}
+
+.search-clear-btn {
+  background: none;
+  border: none;
+  color: var(--google-text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background-color 0.12s ease;
+}
+
+.search-clear-btn:hover {
+  background-color: var(--google-surface-active);
+}

@@ -81,12 +81,16 @@ export const api = {
   enableSchedule: () => invoke<void>('enable_schedule'),
   disableSchedule: () => invoke<void>('disable_schedule'),
   exportCapture: (accountId: string, sequence: number, format: string, destination: string) => invoke<void>('export_capture', { accountId, sequence, format, destination }),
+  saveContactExport: (destination: string, content: string) => invoke<void>('save_contact_export', { destination, content }),
   exportPhotos: (
     accountId: string,
     sequence: number,
     destination: string,
     format: 'folder' | 'zip',
-    includeDefault: boolean
+    includeDefault: boolean,
+    resourceNames?: string[],
+    size?: number | null,
+    imageFormat?: 'original' | 'jpg' | 'png' | 'webp'
   ) =>
     invoke<PhotoExportResult>('export_photos', {
       accountId,
@@ -94,6 +98,9 @@ export const api = {
       destination,
       format,
       includeDefault,
+      resourceNames,
+      size,
+      imageFormat,
     }),
   exportSinglePhoto: (accountId: string, sequence: number, photoUrl: string, destination: string, size: number | null) =>
     invoke<string>('export_single_photo', { accountId, sequence, photoUrl, destination, size }),

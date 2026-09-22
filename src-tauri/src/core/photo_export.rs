@@ -310,6 +310,9 @@ pub fn export_contact_photos<F>(
     destination: &Path,
     format: &str,
     include_default: bool,
+    resource_names: Option<&[String]>,
+    size: Option<u32>,
+    image_format: &str,
     progress_callback: F,
 ) -> Result<PhotoExportResult>
 where
@@ -317,6 +320,12 @@ where
 {
     if format != "folder" && format != "zip" {
         bail!("unsupported export format: {}", format);
+    }
+    if !matches!(image_format, "original" | "jpg" | "png" | "webp") {
+        bail!("unsupported image format: {}", image_format);
+    }
+    if size == Some(0) {
+        bail!("photo quality must be greater than zero");
     }
 
     let db = store.open_db(&account.id)?;
@@ -331,11 +340,16 @@ where
          ORDER BY ro.resource_name",
     )?;
 
-    let contacts_rows = stmt
+    let mut contacts_rows = stmt
         .query_map([sequence], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    if let Some(names) = resource_names {
+        let selected: std::collections::HashSet<&str> = names.iter().map(String::as_str).collect();
+        contacts_rows.retain(|(name, _)| selected.contains(name.as_str()));
+    }
 
     let total_contacts = contacts_rows.len();
 
@@ -456,12 +470,14 @@ where
                     );
 
                     if let Ok((bytes, ext)) = res {
-                        let mut guard = results.lock().unwrap();
-                        guard[idx] = Some(DownloadedPhoto {
-                            sanitized_name: task.sanitized_name.clone(),
-                            bytes,
-                            ext,
-                        });
+                        if let Ok((bytes, ext)) = prepare_export_photo(bytes, ext, size, image_format) {
+                            let mut guard = results.lock().unwrap();
+                            guard[idx] = Some(DownloadedPhoto {
+                                sanitized_name: task.sanitized_name.clone(),
+                                bytes,
+                                ext,
+                            });
+                        }
                     }
 
                     let done = completed_counter.fetch_add(1, Ordering::SeqCst) + 1;
@@ -519,6 +535,51 @@ where
         skipped_default,
         destination: destination.to_string_lossy().to_string(),
     })
+}
+
+fn prepare_export_photo(
+    bytes: Vec<u8>,
+    source_ext: &'static str,
+    size: Option<u32>,
+    image_format: &str,
+) -> Result<(Vec<u8>, &'static str)> {
+    let output_ext = match image_format {
+        "original" => source_ext,
+        "jpg" => "jpg",
+        "png" => "png",
+        "webp" => "webp",
+        _ => bail!("unsupported image format"),
+    };
+    // Preserve animated GIFs when keeping the source format.
+    if source_ext == "gif" && output_ext == "gif" {
+        return Ok((bytes, source_ext));
+    }
+    if size.is_none() && output_ext == source_ext {
+        return Ok((bytes, source_ext));
+    }
+    let image = image::load_from_memory(&bytes)?;
+    let resized = if let Some(target) = size.filter(|target| *target < image.width().max(image.height())) {
+        image.resize(target, target, image::imageops::FilterType::Lanczos3)
+    } else {
+        image
+    };
+    let mut output = Cursor::new(Vec::new());
+    if output_ext == "jpg" {
+        let rgba = resized.to_rgba8();
+        let mut white = image::RgbaImage::from_pixel(rgba.width(), rgba.height(), image::Rgba([255, 255, 255, 255]));
+        image::imageops::overlay(&mut white, &rgba, 0, 0);
+        let rgb = image::DynamicImage::ImageRgba8(white).to_rgb8();
+        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut output, 92);
+        image::DynamicImage::ImageRgb8(rgb).write_with_encoder(encoder)?;
+    } else {
+        let format = match output_ext {
+            "png" => image::ImageFormat::Png,
+            "webp" => image::ImageFormat::WebP,
+            _ => bail!("unsupported image format"),
+        };
+        resized.write_to(&mut output, format)?;
+    }
+    Ok((output.into_inner(), output_ext))
 }
 
 fn load_single_photo(
@@ -655,6 +716,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_batch_photo_quality_and_format() {
+        let source = image::DynamicImage::new_rgba8(800, 400);
+        let mut encoded = Cursor::new(Vec::new());
+        source.write_to(&mut encoded, image::ImageFormat::Png).unwrap();
+        let (bytes, ext) = prepare_export_photo(encoded.into_inner(), "png", Some(256), "jpg").unwrap();
+        assert_eq!(ext, "jpg");
+        assert_eq!(image::load_from_memory(&bytes).unwrap().dimensions(), (256, 128));
+        let (bytes, ext) = prepare_export_photo(bytes, "jpg", Some(512), "webp").unwrap();
+        assert_eq!(ext, "webp");
+        assert_eq!(image::load_from_memory(&bytes).unwrap().dimensions(), (256, 128));
+    }
+
+    #[test]
     fn test_filename_sanitization() {
         assert_eq!(sanitize_filename("Alice / Bob <Test>?"), "Alice _ Bob _Test");
         assert_eq!(sanitize_filename("John: Smith*"), "John_ Smith");
@@ -768,6 +842,9 @@ mod tests {
             &folder_dest,
             "folder",
             false,
+            None,
+            None,
+            "original",
             |_, _, _| {},
         )
         .unwrap();
@@ -776,6 +853,25 @@ mod tests {
         assert_eq!(res_folder.exported_photos, 1);
         assert_eq!(res_folder.skipped_default, 1);
         assert!(folder_dest.join("Jane Doe.png").exists());
+
+        let selected_dest = temp.path().join("selected_photos");
+        let selected = vec!["people/1".to_string()];
+        let selected_result = export_contact_photos(
+            &store,
+            &account,
+            outcome.sequence,
+            &selected_dest,
+            "folder",
+            false,
+            Some(&selected),
+            None,
+            "original",
+            |_, _, _| {},
+        )
+        .unwrap();
+        assert_eq!(selected_result.total_contacts, 1);
+        assert_eq!(selected_result.exported_photos, 1);
+        assert_eq!(selected_result.skipped_default, 0);
 
         // 2. Test ZIP Export
         let zip_dest = temp.path().join("exported_photos.zip");
@@ -786,6 +882,9 @@ mod tests {
             &zip_dest,
             "zip",
             false,
+            None,
+            None,
+            "original",
             |_, _, _| {},
         )
         .unwrap();

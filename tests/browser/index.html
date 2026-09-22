@@ -1,0 +1,109 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Contact History refactor verification</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { mockIPC, mockWindows } from '/node_modules/@tauri-apps/api/mocks.js';
+      mockWindows('main');
+      const memberships = (...ids) =>
+        ids.map((id) => ({ contactGroupMembership: { contactGroupResourceName: id } }));
+      const contacts = [
+        {
+          resource_name: 'people/alex',
+          display_name: 'Alex Example',
+          version: 1,
+          payload: {
+            names: [{ displayName: 'Alex Example', givenName: 'Alex', familyName: 'Example' }],
+            emailAddresses: [{ value: 'alex@example.test' }],
+            phoneNumbers: [{ value: '+442012345678' }],
+            memberships: memberships('contactGroups/starred', 'contactGroups/custom-friends'),
+          },
+        },
+        {
+          resource_name: 'people/jordan',
+          display_name: 'Jordan Sample',
+          version: 2,
+          payload: {
+            names: [{ displayName: 'Jordan Sample', givenName: 'Jordan', familyName: 'Sample' }],
+            emailAddresses: [{ value: 'jordan@example.test' }],
+            memberships: memberships('contactGroups/custom-friends'),
+          },
+        },
+        {
+          resource_name: 'people/morgan',
+          display_name: 'Morgan Demo',
+          version: 1,
+          payload: {
+            names: [{ displayName: 'Morgan Demo', givenName: 'Morgan', familyName: 'Demo' }],
+          },
+        },
+      ];
+      mockIPC(
+        (cmd, args) => {
+          switch (cmd) {
+            case 'list_accounts':
+              return [{ id: 'test', subject: 'test', email: 'archive@example.test' }];
+            case 'account_profile':
+              return { email: 'archive@example.test', name: 'Test Archive', picture: null };
+            case 'list_captures':
+              return [2, 1].map((sequence) => ({
+                sequence,
+                started_at: '2026-09-18T10:00:00Z',
+                committed_at: '2026-09-18T10:00:00Z',
+                contact_count: 3,
+                group_count: 1,
+                media_complete: true,
+              }));
+            case 'list_contacts':
+              return contacts;
+            case 'list_groups':
+              return [
+                { resource_name: 'contactGroups/custom-friends', name: 'Friends', member_count: 2 },
+              ];
+            case 'list_avatars':
+              return {};
+            case 'account_health':
+              return { connected: true, last_capture: null };
+            case 'due_status':
+              return { due: false, next_due_at: '2026-09-25T09:00:00Z' };
+            case 'get_schedule_config':
+              return {
+                enabled: false,
+                interval_days: 7,
+                time_of_day: '09:00',
+                run_at_logon: true,
+                run_daily: true,
+              };
+            case 'contact_history':
+              return [
+                {
+                  sequence: 2,
+                  version: 1,
+                  committed_at: '2026-09-18T10:00:00Z',
+                  before: null,
+                  after: contacts.find((c) => c.resource_name === args.resourceName)?.payload,
+                },
+              ];
+            case 'list_changes':
+            case 'all_changes':
+            case 'compare_snapshots':
+            case 'contact_media':
+              return [];
+            case 'win_is_maximized':
+              return false;
+            case 'save_schedule_config':
+              return;
+            default:
+              throw new Error('Unexpected smoke IPC: ' + cmd);
+          }
+        },
+        { shouldMockEvents: true },
+      );
+      await import('/src/main.ts');
+    </script>
+  </body>
+</html>

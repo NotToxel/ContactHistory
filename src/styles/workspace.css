@@ -1,0 +1,127 @@
+/* Main View Area */
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--surface-base);
+  position: relative;
+}
+
+/* View Header */
+.view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px 8px 24px;
+  background: var(--surface-base);
+}
+
+.view-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--google-text);
+  letter-spacing: -0.1px;
+}
+
+.view-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Progress banner */
+.capture-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background-color: var(--google-blue-surface);
+  border-bottom: 1px solid var(--google-blue-pill);
+  color: var(--google-blue);
+  font-size: 13px;
+  font-weight: 500;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.banner-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.banner-progress-bar {
+  width: 140px;
+  height: 6px;
+  background-color: var(--google-blue-pill);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.banner-progress-fill {
+  height: 100%;
+  background-color: var(--google-blue);
+  transition: width 0.3s ease;
+}
+
+.banner-cancel-btn {
+  background: var(--surface-base);
+  border: 1px solid var(--google-blue-pill);
+  color: var(--google-danger);
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.banner-cancel-btn:hover {
+  background-color: var(--google-danger-surface);
+  border-color: var(--google-danger);
+}
+
+/* Toast Banner */
+.toast-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background-color: var(--google-blue-surface);
+  border-bottom: 1px solid var(--google-blue-pill);
+  color: var(--google-blue);
+  font-size: 13px;
+  font-weight: 500;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+.toast-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.toast-icon {
+  font-size: 18px;
+  color: var(--google-blue);
+}
+
+.toast-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--google-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 50%;
+  transition: background-color 0.15s;
+}
+
+.toast-close-btn:hover {
+  background-color: rgba(60, 64, 67, 0.08);
+  color: var(--google-text);
+}

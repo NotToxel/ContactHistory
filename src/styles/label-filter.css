@@ -1,0 +1,379 @@
+/* ── Multi-Select Label Filter System ────────────────────────────────────────── */
+.sidebar-section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 8px;
+}
+
+.sidebar-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-header-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 19px;
+  padding: 0 7px;
+  border-radius: 10px;
+  background-color: var(--google-blue-surface);
+  color: var(--google-blue);
+  border: 1px solid rgba(26, 115, 232, 0.28);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.1px;
+  user-select: none;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.sidebar-header-clear {
+  background: transparent;
+  border: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--google-blue);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.sidebar-header-clear:hover {
+  background-color: var(--google-blue-surface);
+}
+
+.label-nav-item {
+  position: relative;
+  user-select: none;
+}
+
+.label-nav-item:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: -2px;
+}
+
+/* 
+ * Hide the checkbox until hover or selected.
+ * When hidden, collapse width & margin with smooth cubic-bezier transition,
+ * letting the label icon and text sit at the standard alignment.
+ */
+.label-nav-item .nav-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0;
+  max-width: 0;
+  height: 18px;
+  margin-right: 0;
+  opacity: 0;
+  transform: scale(0.7);
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 3px;
+  border: 2px solid var(--google-text-secondary);
+  background-color: var(--surface-base);
+  box-sizing: border-box;
+  flex-shrink: 0;
+  transition:
+    width 0.18s cubic-bezier(0.2, 0, 0, 1),
+    max-width 0.18s cubic-bezier(0.2, 0, 0, 1),
+    margin-right 0.18s cubic-bezier(0.2, 0, 0, 1),
+    opacity 0.18s cubic-bezier(0.2, 0, 0, 1),
+    transform 0.18s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+/* Expand smoothly on hover, focus-within, or when any label is selected or item is selected */
+.label-nav-item:hover .nav-checkbox,
+.label-nav-item:focus-within .nav-checkbox,
+.sidebar-section.has-selected-labels .label-nav-item .nav-checkbox,
+.label-nav-item.is-selected .nav-checkbox,
+.label-nav-item .nav-checkbox.checked {
+  width: 18px;
+  max-width: 18px;
+  margin-right: 10px;
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.label-nav-item:hover .nav-checkbox:not(.checked) {
+  border-color: var(--google-blue);
+}
+
+.label-nav-item .nav-checkbox.checked {
+  background-color: var(--google-blue);
+  border-color: var(--google-blue);
+  color: #ffffff;
+}
+
+.label-nav-item .nav-checkbox .nav-check-icon {
+  font-size: 15px;
+  font-weight: bold;
+  line-height: 1;
+  color: #ffffff;
+}
+
+/* ── "Only" Button: Refined Material 3 Pill Badge ──────────────────────────── */
+.label-nav-item .only-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+  color: var(--google-blue);
+  background: var(--google-blue-surface);
+  border: 1px solid var(--google-blue-pill);
+  border-radius: 10px;
+  cursor: pointer;
+  margin-left: 6px;
+  line-height: 1;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.label-nav-item:hover .only-btn,
+.label-nav-item:focus-within .only-btn {
+  display: inline-flex;
+}
+
+.label-nav-item .only-btn:hover {
+  background: var(--google-blue);
+  color: #ffffff;
+  border-color: var(--google-blue);
+  box-shadow: 0 1px 3px rgba(26, 115, 232, 0.3);
+}
+
+:root[data-theme='dark'] .label-nav-item .nav-checkbox {
+  background-color: var(--surface-base);
+  border-color: var(--google-text-secondary);
+}
+
+:root[data-theme='dark'] .label-nav-item .only-btn {
+  background: rgba(26, 115, 232, 0.18);
+  border-color: rgba(138, 180, 248, 0.4);
+  color: var(--google-blue);
+}
+
+:root[data-theme='dark'] .label-nav-item .only-btn:hover {
+  background: var(--google-blue);
+  color: #202124;
+  border-color: var(--google-blue);
+}
+
+/* ── Filter Contacts Bar (Material 3 Proportional Polish) ─────────────────────── */
+.view-header.has-filter-bar {
+  padding-bottom: 4px;
+}
+
+.filter-contacts-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 24px 8px 24px;
+  background-color: var(--surface-base);
+  animation: fadeIn 0.15s ease-out;
+}
+
+.filter-bar-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-bar-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--google-text-secondary);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.filter-bar-lead .filter-lead-icon {
+  font-size: 16px;
+  color: var(--google-text-secondary);
+}
+
+.filter-bar-lead .filter-lead-label {
+  font-size: 12px;
+  color: var(--google-text-secondary);
+  font-weight: 500;
+}
+
+.filter-chips-list {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Material Design 3 Filter Chip (Height 28px) */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 5px 0 9px;
+  border-radius: 6px;
+  background-color: var(--google-blue-surface);
+  border: 1px solid rgba(26, 115, 232, 0.28);
+  color: var(--google-blue);
+  font-size: 12px;
+  font-weight: 500;
+  max-width: 260px;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  user-select: none;
+}
+
+.filter-chip-icon {
+  font-size: 15px;
+  color: var(--google-blue);
+  flex-shrink: 0;
+}
+
+.filter-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--google-blue);
+  cursor: pointer;
+  padding: 0;
+  margin-left: 1px;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.filter-chip-remove span {
+  font-size: 13.5px;
+  line-height: 1;
+}
+
+.filter-chip-remove:hover {
+  background-color: rgba(26, 115, 232, 0.18);
+}
+
+.filter-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Material Design 3 Symmetrical Segmented Buttons (Height 28px) */
+.match-mode-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--google-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: var(--surface-base);
+  height: 28px;
+}
+
+.match-mode-segmented-control .segmented-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 10px;
+  min-width: 68px;
+  background: transparent;
+  border: none;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--google-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+  text-align: center;
+}
+
+.match-mode-segmented-control .segmented-btn + .segmented-btn {
+  border-left: 1px solid var(--google-border);
+}
+
+.match-mode-segmented-control .segmented-btn:hover:not(.active) {
+  background-color: var(--google-surface-hover);
+  color: var(--google-text);
+}
+
+.match-mode-segmented-control .segmented-btn.active {
+  background-color: var(--google-blue-surface);
+  color: var(--google-blue);
+  font-weight: 600;
+}
+
+/* Divider between segmented buttons and clear action */
+.filter-bar-divider {
+  width: 1px;
+  height: 16px;
+  background-color: var(--google-border);
+  flex-shrink: 0;
+}
+
+/* Material Design 3 Clear Button (Height 28px, Matching Proportions) */
+.filter-clear-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 9px 0 7px;
+  border-radius: 6px;
+  border: 1px solid var(--google-border);
+  background-color: var(--surface-base);
+  color: var(--google-text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.filter-clear-all-btn span.material-symbols-outlined {
+  font-size: 14px;
+}
+
+.filter-clear-all-btn:hover {
+  background-color: var(--google-surface-hover);
+  color: var(--google-text);
+  border-color: var(--google-text-secondary);
+}

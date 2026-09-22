@@ -38,6 +38,32 @@
   let rootEl: HTMLDivElement | null = $state(null);
   let searchInputEl: HTMLInputElement | null = $state(null);
   let listboxEl: HTMLDivElement | null = $state(null);
+  let menuStyle = $state('');
+
+  function portal(node: HTMLElement) {
+    document.body.appendChild(node);
+    return { destroy: () => node.remove() };
+  }
+
+  function positionMenu() {
+    if (!open || !rootEl) return;
+    const rect = rootEl.getBoundingClientRect();
+    const gap = 4;
+    const edge = 8;
+    const below = window.innerHeight - rect.bottom - gap - edge;
+    const above = rect.top - gap - edge;
+    const height = Math.max(0, Math.min(280, Math.max(below, above)));
+    const width = Math.min(rect.width, window.innerWidth - edge * 2);
+    const left = Math.max(edge, Math.min(rect.left, window.innerWidth - width - edge));
+    menuStyle = below >= Math.min(280, above)
+      ? `left: ${left}px; top: ${rect.bottom + gap}px; width: ${width}px; max-height: ${height}px;`
+      : `left: ${left}px; bottom: ${window.innerHeight - rect.top + gap}px; width: ${width}px; max-height: ${height}px;`;
+  }
+
+  onMount(() => {
+    window.addEventListener('scroll', positionMenu, true);
+    return () => window.removeEventListener('scroll', positionMenu, true);
+  });
 
   const selectedOption = $derived(options.find((o) => o.value === value));
 
@@ -59,6 +85,7 @@
       const currentIdx = filteredOptions.findIndex((o) => o.value === value);
       highlightedIndex = currentIdx >= 0 ? currentIdx : 0;
       await tick();
+      positionMenu();
       if (searchable && searchInputEl) {
         searchInputEl.focus();
       } else {
@@ -140,8 +167,9 @@
 </script>
 
 <svelte:window
+  onresize={positionMenu}
   onclick={(e) => {
-    if (open && rootEl && !rootEl.contains(e.target as Node)) {
+    if (open && rootEl && !rootEl.contains(e.target as Node) && !listboxEl?.contains(e.target as Node)) {
       close();
     }
   }}
@@ -176,6 +204,8 @@
   {#if open}
     <div
       class="custom-select-menu"
+      use:portal
+      style={menuStyle}
       role="listbox"
       tabindex="-1"
       bind:this={listboxEl}
@@ -332,11 +362,8 @@
   }
 
   .custom-select-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
-    z-index: 1100;
+    position: fixed;
+    z-index: 1200;
     background-color: var(--surface-base);
     border: 1px solid var(--google-border);
     border-radius: 10px;
@@ -344,7 +371,6 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    max-height: 280px;
     animation: popover-slide 0.15s ease-out;
   }
 

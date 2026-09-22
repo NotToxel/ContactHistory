@@ -1,0 +1,398 @@
+/* Content Layout (Sidebar + Main View) */
+.content-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-width, 280px);
+  min-width: var(--sidebar-width, 280px);
+  max-width: min(var(--sidebar-width, 280px), 45vw);
+  background-color: var(--surface-base);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 12px 24px 12px;
+  border-right: 1px solid var(--google-border-subtle);
+  scrollbar-width: thin;
+  transition:
+    width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.18s ease;
+  white-space: nowrap;
+}
+
+.sidebar.is-resizing {
+  transition: none !important;
+  user-select: none !important;
+}
+
+.sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  border-right-width: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.sidebar-resizer {
+  width: 8px;
+  margin-left: -4px;
+  cursor: col-resize;
+  position: relative;
+  z-index: 35;
+  flex-shrink: 0;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer.is-resizing {
+  background-color: var(--google-blue);
+}
+
+.sidebar-resizer:focus-visible {
+  outline: 2px solid var(--google-blue);
+  outline-offset: -1px;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--google-border);
+  border-radius: 3px;
+}
+
+/* Create / Capture Action Button */
+.create-btn-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 12px 18px 12px;
+  width: 100%;
+  position: relative;
+  z-index: 25;
+}
+
+.capture-btn {
+  position: relative;
+  z-index: 26;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 220px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 22px;
+  background-color: var(--google-blue);
+  color: var(--on-accent);
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.15px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 2px 6px rgba(24, 90, 188, 0.22);
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.15s ease,
+    opacity 0.18s ease;
+}
+
+.capture-btn:hover:not(:disabled) {
+  background-color: var(--google-blue-hover);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.18),
+    0 4px 12px rgba(24, 90, 188, 0.32);
+  transform: translateY(-1px);
+}
+
+.capture-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.capture-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.capture-btn .capture-icon {
+  font-size: 20px;
+  line-height: 1;
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.capture-btn .capture-icon.spin,
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+:root[data-theme='dark'] .capture-btn {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-theme='dark'] .capture-btn:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+/* Nav sections */
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+
+.sidebar-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 6px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--google-text-secondary);
+  text-transform: capitalize;
+}
+
+.section-add-btn {
+  background: none;
+  border: none;
+  color: var(--google-text-secondary);
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+}
+
+.section-add-btn:hover {
+  background-color: var(--google-surface-hover);
+  color: var(--google-text);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 16px 0 20px;
+  border-radius: 20px;
+  border: none;
+  background: transparent;
+  color: var(--google-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  width: 100%;
+  text-align: left;
+  position: relative;
+}
+
+.nav-item:hover {
+  background-color: var(--google-surface-hover);
+}
+
+.nav-item.active {
+  background-color: var(--google-blue-pill);
+  color: var(--google-blue-container);
+  font-weight: 600;
+}
+
+.nav-item .nav-icon {
+  margin-right: 18px;
+  color: var(--google-text-secondary);
+  font-size: 20px;
+}
+
+.nav-item.active .nav-icon {
+  color: var(--google-blue-container);
+}
+
+.nav-item .nav-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-item .nav-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--google-text-secondary);
+  margin-left: 8px;
+}
+
+.nav-item.active .nav-count {
+  color: var(--google-blue-container);
+  font-weight: 600;
+}
+
+/* Label navigation items */
+.label-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.label-nav-item .nav-checkbox {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  border-radius: 3px;
+  border: 2px solid var(--control-border);
+  background-color: transparent;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin-right: 14px;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.label-nav-item:hover .nav-checkbox,
+.label-nav-item:focus-within .nav-checkbox,
+.label-nav-item.is-selected .nav-checkbox {
+  display: inline-flex;
+}
+
+.label-nav-item:hover .nav-icon,
+.label-nav-item:focus-within .nav-icon,
+.label-nav-item.is-selected .nav-icon {
+  display: none;
+}
+
+.label-nav-item .nav-checkbox.checked {
+  background-color: var(--google-blue);
+  border-color: var(--google-blue);
+}
+
+.label-nav-item .nav-checkbox .nav-check-icon {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* "Only" button on label nav items */
+.label-nav-item .only-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background-color: var(--google-blue-pill);
+  color: var(--google-blue);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  margin-left: 6px;
+  flex-shrink: 0;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.label-nav-item:hover .only-btn,
+.label-nav-item:focus-within .only-btn {
+  display: inline-flex;
+}
+
+.label-nav-item .only-btn:hover {
+  background-color: var(--google-blue);
+  color: #ffffff;
+}
+
+.label-nav-item .only-btn:active {
+  transform: scale(0.95);
+}
+
+:root[data-theme='dark'] .label-nav-item .only-btn {
+  background-color: rgba(138, 180, 248, 0.15);
+  color: #8ab4f8;
+}
+
+:root[data-theme='dark'] .label-nav-item .only-btn:hover {
+  background-color: #8ab4f8;
+  color: #202124;
+}
+
+/* Sidebar header badge and clear button */
+.sidebar-section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-header-badge {
+  font-size: 11px;
+  font-weight: 600;
+  background-color: var(--google-blue-surface);
+  color: var(--google-blue);
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
+:root[data-theme='dark'] .sidebar-header-badge {
+  background-color: rgba(138, 180, 248, 0.15);
+  color: #8ab4f8;
+}
+
+.sidebar-header-clear {
+  background: none;
+  border: none;
+  color: var(--google-blue);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-header-clear:hover {
+  background-color: var(--google-surface-hover);
+  text-decoration: underline;
+}
+
+:root[data-theme='dark'] .sidebar-header-clear {
+  color: #8ab4f8;
+}

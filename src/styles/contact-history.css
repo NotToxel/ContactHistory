@@ -1,0 +1,342 @@
+/* Full History Log Card (Right Column) */
+.history-log-card {
+  background-color: var(--google-surface);
+  border-radius: 12px;
+  padding: 16px 20px;
+  border: 1px solid var(--google-border-subtle);
+}
+
+.history-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.history-count-pill {
+  font-size: 11.5px;
+  font-weight: 600;
+  background-color: var(--google-blue-surface);
+  color: var(--google-blue);
+  padding: 2px 10px;
+  border-radius: 12px;
+  letter-spacing: 0.01em;
+}
+
+/* ── Key Dates Summary Bar ──────────────────────────────────────────────── */
+.history-dates-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.date-stat-card {
+  background: var(--surface-base);
+  border: 1px solid var(--google-border-subtle);
+  border-radius: 10px;
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.date-stat-card:hover {
+  border-color: var(--google-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.date-stat-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--google-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.date-stat-header .material-symbols-outlined {
+  font-size: 14px;
+  color: var(--google-blue);
+}
+
+.date-stat-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--google-text);
+  line-height: 1.4;
+}
+
+.date-stat-relative {
+  font-size: 11.5px;
+  color: var(--google-text-secondary);
+}
+
+/* ── Timeline Rail & Log Entries ────────────────────────────────────────── */
+.history-log-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 4px;
+  position: relative;
+}
+
+/* Vertical timeline rail */
+.history-log-timeline::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 18px;
+  bottom: 18px;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--google-blue) 0%, var(--google-border-subtle) 100%);
+  border-radius: 2px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.history-entry-card {
+  background: var(--surface-base);
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  border-radius: 8px;
+  padding: 11px 12px 11px 38px;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
+  position: relative;
+  margin-bottom: 8px;
+  z-index: 1;
+}
+
+/* Timeline node dot */
+.history-entry-card::before {
+  content: '';
+  position: absolute;
+  left: -21px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--google-border);
+  border: 2px solid var(--surface-base);
+  box-sizing: border-box;
+  z-index: 2;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+}
+
+.history-entry-card:hover {
+  border-color: var(--google-border);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+  background: var(--google-surface-hover, #f1f3f4);
+}
+
+.history-entry-card.is-current {
+  border-left: 3px solid var(--google-blue);
+  background: var(--google-blue-surface);
+}
+
+/* Active dot for current */
+.history-entry-card.is-current::before {
+  background: var(--google-blue);
+  box-shadow: 0 0 0 3px var(--google-blue-surface);
+}
+
+.history-entry-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.history-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.history-version-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--google-text);
+  background: var(--google-surface);
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--google-border-subtle);
+}
+
+.history-entry-card.is-current .history-version-badge {
+  background: var(--google-blue);
+  color: #fff;
+  border-color: var(--google-blue);
+}
+
+.history-entry-date {
+  font-size: 11.5px;
+  color: var(--google-text-secondary);
+  white-space: nowrap;
+}
+
+.history-entry-snapshot {
+  font-size: 10.5px;
+  color: var(--google-text-secondary);
+  background: var(--google-surface);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--google-border-subtle);
+}
+
+.history-entry-badges {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.history-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 5px;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+
+.history-tag.added {
+  background: var(--success-surface);
+  color: var(--success-text);
+}
+
+.history-tag.modified {
+  background: var(--google-blue-surface);
+  color: var(--google-blue);
+}
+
+.history-tag.deleted,
+.history-tag.removed {
+  background: var(--google-danger-surface);
+  color: var(--google-danger);
+}
+
+.history-tag.neutral {
+  background: var(--google-surface);
+  color: var(--google-text-secondary);
+  border: 1px solid var(--google-border-subtle);
+}
+
+.history-diff-toggle-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  color: var(--google-blue);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 8px;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.history-diff-toggle-btn:hover {
+  background: var(--google-blue-surface);
+  border-color: var(--google-blue);
+}
+
+.history-diff-content {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--google-border-subtle);
+  font-size: 12px;
+}
+
+/* Stack field diffs inside history cards (single column, compact) */
+.history-diff-content .field-diff-values {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.history-diff-content .field-diff-values > div {
+  padding: 8px 10px;
+}
+
+.history-diff-content .field-diff h4 {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+/* ── Raw Payload On-Screen Card ─────────────────────────────────────────── */
+.raw-payload-card {
+  background-color: var(--google-surface);
+  border-radius: 12px;
+  border: 1px solid var(--google-border-subtle);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.raw-payload-card:focus-within,
+.raw-payload-card:hover {
+  border-color: var(--google-border);
+}
+
+.raw-payload-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 13px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  gap: 8px;
+  transition: background 0.12s;
+}
+
+.raw-payload-card-header:hover {
+  background: var(--google-surface-hover);
+}
+
+.raw-payload-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--google-text);
+}
+
+.raw-payload-chevron {
+  color: var(--google-text-secondary);
+  font-size: 20px;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.raw-payload-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.raw-payload-card-body {
+  padding: 0 0 2px;
+  border-top: 1px solid var(--google-border-subtle);
+}
