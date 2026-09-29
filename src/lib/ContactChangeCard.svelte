@@ -459,8 +459,8 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    min-width: 0;
-    flex: 1;
+    min-width: 220px;
+    flex-shrink: 0;
   }
 
   .change-avatar {
@@ -493,8 +493,9 @@
   .change-name-row {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
+    min-width: 0;
   }
 
   .change-display-name {
@@ -578,7 +579,9 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    flex-shrink: 0;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    min-width: 0;
   }
 
   .change-summary-badges {

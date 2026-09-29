@@ -28,6 +28,7 @@
 
 .contacts-table {
   width: 100%;
+  min-width: max-content;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 14px;
@@ -87,6 +88,7 @@
 
 /* Name column sort header */
 .th-name-col {
+  min-width: 220px;
   overflow: visible !important;
 }
 

@@ -96,7 +96,7 @@
           </button>
         </div>
       </div>
-    {:else}
+    {:else if !app.initializing}
       <!-- Case 2: No account connected (or explicitly adding another account) -->
       <div class="onboarding-icon-circle">
         <span class="material-symbols-outlined icon-filled" style="font-size: 32px;">contacts</span>

@@ -23,6 +23,7 @@
 
 .contact-row td:first-child {
   color: var(--google-text);
+  min-width: 220px;
 }
 
 /* Name cell */
@@ -30,6 +31,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 220px;
 }
 
 .star-btn {

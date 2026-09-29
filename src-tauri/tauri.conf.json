@@ -4,6 +4,6 @@
   "version": "0.3.2",
   "identifier": "app.contacthistory.local",
   "build": { "beforeDevCommand": "bun run dev", "devUrl": "http://localhost:1420", "beforeBuildCommand": "bun run build", "frontendDist": "../dist" },
-  "app": { "windows": [{ "label": "main", "title": "Contact History", "width": 1100, "height": 740, "minWidth": 800, "minHeight": 560, "resizable": true, "decorations": false }], "security": { "csp": "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ipc: http://ipc.localhost" } },
+  "app": { "windows": [{ "label": "main", "title": "Contact History", "width": 1100, "height": 740, "minWidth": 1050, "minHeight": 600, "resizable": true, "decorations": false }], "security": { "csp": "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; connect-src ipc: http://ipc.localhost" } },
   "bundle": { "active": true, "targets": ["nsis"] }
 }

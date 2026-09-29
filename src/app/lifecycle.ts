@@ -33,7 +33,10 @@ export function registerLifecycle(this: AppModel): void {
 
     void loadSchedule(this, () => disposed);
     void initializeArchive(this, () => disposed).catch((error) => {
-      if (!disposed) this.error = String(error);
+      if (!disposed) {
+        this.error = String(error);
+        this.initializing = false;
+      }
     });
 
     return () => {
@@ -87,5 +90,8 @@ async function initializeArchive(app: AppModel, disposed: () => boolean): Promis
   } else {
     window.history.replaceState(app.currentNavigation(), '');
   }
-  if (!disposed()) app.navigationReady = true;
+  if (!disposed()) {
+    app.navigationReady = true;
+    app.initializing = false;
+  }
 }

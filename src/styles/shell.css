@@ -4,8 +4,7 @@
   flex-direction: column;
   height: 100vh;
   width: 100vw;
-  min-width: 800px;
-  min-height: 560px;
+  max-width: 100vw;
   background-color: var(--surface-base);
   overflow: hidden;
 }
@@ -24,6 +23,8 @@
   gap: 16px;
   -webkit-app-region: drag;
   user-select: none;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .topbar-drag-area {
@@ -33,14 +34,15 @@
   align-items: center;
   -webkit-app-region: drag;
   cursor: default;
-  min-width: 180px;
+  min-width: 0;
 }
 
 .topbar-left {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 240px;
+  min-width: auto;
+  flex-shrink: 0;
   -webkit-app-region: drag;
 }
 
@@ -125,7 +127,7 @@
   flex: 1 1 580px;
   width: 100%;
   max-width: 580px;
-  min-width: 180px;
+  min-width: 0;
   margin: 0 auto;
   -webkit-app-region: no-drag;
 }
@@ -147,7 +149,7 @@
 
 .topbar-search {
   width: 100%;
-  min-width: 180px;
+  min-width: 140px;
   display: flex;
   align-items: center;
   background-color: var(--google-surface);
@@ -220,4 +222,21 @@ input.search-input:focus-visible {
 
 .search-clear-btn:hover {
   background-color: var(--google-surface-active);
+}
+
+/* Initial Loading State */
+.initial-loading-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--surface-base);
+}
+
+.initial-loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  animation: fadeIn 0.2s ease 0.2s forwards;
 }

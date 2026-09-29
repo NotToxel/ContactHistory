@@ -355,7 +355,6 @@ button:disabled {
   }
   .topbar-right {
     gap: 4px;
-    padding-right: 4px;
   }
   .topbar-search {
     height: 42px;

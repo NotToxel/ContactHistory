@@ -529,8 +529,8 @@ pub fn run() {
             use tauri::Manager;
             for window in app.webview_windows().values() {
                 let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize {
-                    width: 800.0,
-                    height: 560.0,
+                    width: 1050.0,
+                    height: 600.0,
                 })));
             }
             Ok(())

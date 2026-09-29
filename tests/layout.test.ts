@@ -87,14 +87,14 @@ describe('persisted contact layout', () => {
   });
 
   it('enforces reasonable minimum window dimensions and search bar constraints', () => {
-    expect(WINDOW_CONSTRAINTS.minWidth).toBeGreaterThanOrEqual(800);
-    expect(WINDOW_CONSTRAINTS.minHeight).toBeGreaterThanOrEqual(560);
+    expect(WINDOW_CONSTRAINTS.minWidth).toBe(1050);
+    expect(WINDOW_CONSTRAINTS.minHeight).toBe(600);
     expect(WINDOW_CONSTRAINTS.searchBarMinWidth).toBeGreaterThanOrEqual(180);
 
     const mainWindow = tauriConfig.app.windows[0];
     expect(mainWindow.minWidth).toBe(WINDOW_CONSTRAINTS.minWidth);
     expect(mainWindow.minHeight).toBe(WINDOW_CONSTRAINTS.minHeight);
-    expect(mainWindow.minWidth).toBeGreaterThanOrEqual(800);
-    expect(mainWindow.minHeight).toBeGreaterThanOrEqual(560);
+    expect(mainWindow.minWidth).toBe(1050);
+    expect(mainWindow.minHeight).toBe(600);
   });
 });

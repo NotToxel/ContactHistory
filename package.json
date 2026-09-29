@@ -12,6 +12,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "dev": "vite",
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "screenshots": "bun run scripts/generate-screenshots.ts",
     "tauri": "tauri"
   },
   "dependencies": {

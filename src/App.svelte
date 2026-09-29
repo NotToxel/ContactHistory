@@ -68,7 +68,13 @@
 
   <!-- Body Content -->
   <div class="content-body">
-    {#if app.hasData && app.pageView !== 'onboarding'}
+    {#if app.initializing}
+      <div class="initial-loading-container" aria-label="Loading contacts">
+        <div class="initial-loading-spinner">
+          <span class="material-symbols-outlined spin" style="font-size: 32px; color: var(--google-blue);">sync</span>
+        </div>
+      </div>
+    {:else if app.hasData && app.pageView !== 'onboarding'}
       <!-- Google Contacts Sidebar -->
       <Sidebar {app} />
 

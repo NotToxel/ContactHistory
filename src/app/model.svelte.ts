@@ -289,6 +289,7 @@ export class AppModel {
   restoringNavigation = false;
   navigationQueued = false;
   navigationRequest = 0;
+  initializing = $state(true);
   hasData = $derived(Boolean(this.selected && this.captures.length > 0));
   dateInput = $state('');
   search = $state('');

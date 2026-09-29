@@ -29,8 +29,8 @@ export const SIDEBAR = {
   keyboardStep: 10,
 } as const;
 export const WINDOW_CONSTRAINTS = {
-  minWidth: 800,
-  minHeight: 560,
+  minWidth: 1050,
+  minHeight: 600,
   defaultWidth: 1100,
   defaultHeight: 740,
   searchBarMinWidth: 180,

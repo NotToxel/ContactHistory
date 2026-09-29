@@ -83,3 +83,12 @@ textarea {
 .icon-filled {
   font-variation-settings: 'FILL' 1;
 }
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

@@ -225,4 +225,63 @@ describe('extracted contact features', () => {
     );
     expect(events.map((event) => event.date)).toEqual(['2020-03-04', '02-29', 'Every spring']);
   });
+
+  it('guards onboarding credentials screen from flashing during initial app launch', () => {
+    const resolveVisibleView = (state: {
+      initializing: boolean;
+      hasData: boolean;
+      pageView: string;
+      selected: unknown;
+      captures: unknown[];
+    }) => {
+      if (state.initializing) return 'loading';
+      if (state.hasData && state.pageView !== 'onboarding') return state.pageView;
+      if (state.selected && state.captures.length === 0) return 'capture-first-snapshot';
+      return 'enter-google-credentials';
+    };
+
+    // 1. Startup phase while querying local store:
+    expect(
+      resolveVisibleView({
+        initializing: true,
+        selected: undefined,
+        captures: [],
+        pageView: 'onboarding',
+        hasData: false,
+      }),
+    ).toBe('loading');
+
+    // 2. Existing account with archives (user's scenario):
+    expect(
+      resolveVisibleView({
+        initializing: false,
+        selected: { id: 'acc1', email: 'test@example.com' },
+        captures: [{ sequence: 1 }],
+        pageView: 'contacts',
+        hasData: true,
+      }),
+    ).toBe('contacts');
+
+    // 3. True first-time user without accounts:
+    expect(
+      resolveVisibleView({
+        initializing: false,
+        selected: undefined,
+        captures: [],
+        pageView: 'onboarding',
+        hasData: false,
+      }),
+    ).toBe('enter-google-credentials');
+
+    // 4. Connected account with zero snapshots:
+    expect(
+      resolveVisibleView({
+        initializing: false,
+        selected: { id: 'acc1', email: 'test@example.com' },
+        captures: [],
+        pageView: 'onboarding',
+        hasData: false,
+      }),
+    ).toBe('capture-first-snapshot');
+  });
 });

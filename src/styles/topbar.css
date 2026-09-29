@@ -4,7 +4,8 @@
   align-items: center;
   gap: 8px;
   margin-left: auto;
-  padding-right: 8px;
+  padding-right: 142px;
+  flex-shrink: 0;
 }
 
 /* Timeline Snapshot Chip */
@@ -229,10 +230,15 @@
 
 /* Native Window Controls */
 .window-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: var(--topbar-height);
   display: flex;
   align-items: center;
-  height: var(--topbar-height);
-  margin-left: 8px;
+  z-index: 110;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
 }
 
 .win-btn {
@@ -245,6 +251,8 @@
   background: transparent;
   color: var(--google-text-secondary);
   cursor: pointer;
+  flex-shrink: 0;
+  box-sizing: border-box;
   transition:
     background-color 0.1s ease,
     color 0.1s ease;

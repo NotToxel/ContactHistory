@@ -182,12 +182,6 @@
   }
 }
 @media (max-width: 1000px) {
-  .sidebar {
-    position: absolute;
-    inset: 0 auto 0 0;
-    z-index: 40;
-    box-shadow: 8px 0 24px rgba(32, 33, 36, 0.12);
-  }
   .topbar-left {
     min-width: auto;
   }
@@ -592,11 +586,10 @@
   }
 }
 .topbar-drag-area {
-  min-width: 180px;
+  min-width: 0;
 }
 .topbar-drag-area .topbar-search {
   width: 100%;
-  min-width: 180px;
 }
 @media (max-width: 600px) {
   .topbar-drag-area {
