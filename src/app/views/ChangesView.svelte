@@ -238,6 +238,12 @@
           app.media,
         )}
         birthdayFormat={app.preferences.birthdayFormat}
+        accountId={app.selected?.id || ''}
+        beforeSequence={app.compareBaseSeq === app.compareTargetSeq
+          ? (app.captures.find((capture) => capture.sequence < (app.compareBaseSeq ?? 0))
+              ?.sequence ?? null)
+          : app.compareBaseSeq}
+        afterSequence={app.compareTargetSeq}
       />
     {/each}
 
@@ -440,6 +446,11 @@
                     showSnapshotBadge={false}
                     committedAt={item.committed_at}
                     birthdayFormat={app.preferences.birthdayFormat}
+                    accountId={app.selected?.id || ''}
+                    beforeSequence={app.captures.find(
+                      (capture) => capture.sequence < group.sequence,
+                    )?.sequence ?? null}
+                    afterSequence={group.sequence}
                   />
                 {/each}
               </div>

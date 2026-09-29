@@ -135,7 +135,15 @@
               </button>
               {#if isExpanded}
                 <div class="history-diff-content">
-                  <FieldChanges before={entry.before} after={entry.after} labels={app.groupMap} />
+                  <FieldChanges
+                    before={entry.before}
+                    after={entry.after}
+                    labels={app.groupMap}
+                    accountId={app.selected?.id || ''}
+                    resourceName={app.detail.resource_name}
+                    beforeSequence={app.contactHistory[idx + 1]?.sequence ?? null}
+                    afterSequence={entry.sequence}
+                  />
                 </div>
               {/if}
             {/if}

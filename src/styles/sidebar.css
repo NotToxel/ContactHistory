@@ -279,13 +279,15 @@
 }
 
 .label-nav-item:hover .nav-checkbox,
-.label-nav-item:focus-within .nav-checkbox,
+.label-nav-item:focus-visible .nav-checkbox,
+.label-nav-item:has(.only-btn:focus-visible) .nav-checkbox,
 .label-nav-item.is-selected .nav-checkbox {
   display: inline-flex;
 }
 
 .label-nav-item:hover .nav-icon,
-.label-nav-item:focus-within .nav-icon,
+.label-nav-item:focus-visible .nav-icon,
+.label-nav-item:has(.only-btn:focus-visible) .nav-icon,
 .label-nav-item.is-selected .nav-icon {
   display: none;
 }
@@ -326,7 +328,8 @@
 }
 
 .label-nav-item:hover .only-btn,
-.label-nav-item:focus-within .only-btn {
+.label-nav-item:focus-visible .only-btn,
+.label-nav-item:has(.only-btn:focus-visible) .only-btn {
   display: inline-flex;
 }
 

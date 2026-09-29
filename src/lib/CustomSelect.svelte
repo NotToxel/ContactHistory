@@ -55,9 +55,10 @@
     const height = Math.max(0, Math.min(280, Math.max(below, above)));
     const width = Math.min(rect.width, window.innerWidth - edge * 2);
     const left = Math.max(edge, Math.min(rect.left, window.innerWidth - width - edge));
-    menuStyle = below >= Math.min(280, above)
-      ? `left: ${left}px; top: ${rect.bottom + gap}px; width: ${width}px; max-height: ${height}px;`
-      : `left: ${left}px; bottom: ${window.innerHeight - rect.top + gap}px; width: ${width}px; max-height: ${height}px;`;
+    menuStyle =
+      below >= Math.min(280, above)
+        ? `left: ${left}px; top: ${rect.bottom + gap}px; width: ${width}px; max-height: ${height}px;`
+        : `left: ${left}px; bottom: ${window.innerHeight - rect.top + gap}px; width: ${width}px; max-height: ${height}px;`;
   }
 
   onMount(() => {
@@ -70,10 +71,11 @@
   const filteredOptions = $derived.by(() => {
     if (!searchable || !searchQuery.trim()) return options;
     const query = searchQuery.trim().toLowerCase();
-    return options.filter((o) =>
-      o.label.toLowerCase().includes(query) ||
-      (o.sublabel && o.sublabel.toLowerCase().includes(query)) ||
-      String(o.value).toLowerCase().includes(query)
+    return options.filter(
+      (o) =>
+        o.label.toLowerCase().includes(query) ||
+        (o.sublabel && o.sublabel.toLowerCase().includes(query)) ||
+        String(o.value).toLowerCase().includes(query),
     );
   });
 
@@ -118,7 +120,12 @@
 
   function handleTriggerKeydown(event: KeyboardEvent) {
     if (disabled) return;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter' || event.key === ' ') {
+    if (
+      event.key === 'ArrowDown' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'Enter' ||
+      event.key === ' '
+    ) {
       event.preventDefault();
       toggle();
     }
@@ -169,13 +176,24 @@
 <svelte:window
   onresize={positionMenu}
   onclick={(e) => {
-    if (open && rootEl && !rootEl.contains(e.target as Node) && !listboxEl?.contains(e.target as Node)) {
+    if (
+      open &&
+      rootEl &&
+      !rootEl.contains(e.target as Node) &&
+      !listboxEl?.contains(e.target as Node)
+    ) {
       close();
     }
   }}
 />
 
-<div class="custom-select" bind:this={rootEl} class:disabled class:open style={maxWidth ? `max-width: ${maxWidth};` : undefined}>
+<div
+  class="custom-select"
+  bind:this={rootEl}
+  class:disabled
+  class:open
+  style={maxWidth ? `max-width: ${maxWidth};` : undefined}
+>
   <button
     type="button"
     class="custom-select-trigger"
@@ -222,13 +240,18 @@
             bind:value={searchQuery}
             placeholder={searchPlaceholder}
             onkeydown={handleListKeydown}
-            oninput={() => { highlightedIndex = 0; }}
+            oninput={() => {
+              highlightedIndex = 0;
+            }}
           />
           {#if searchQuery}
             <button
               type="button"
               class="clear-search-btn"
-              onclick={() => { searchQuery = ''; searchInputEl?.focus(); }}
+              onclick={() => {
+                searchQuery = '';
+                searchInputEl?.focus();
+              }}
               aria-label="Clear search"
             >
               <span class="material-symbols-outlined">close</span>
@@ -252,7 +275,9 @@
               role="option"
               aria-selected={isSelected}
               onclick={() => selectOption(option)}
-              onmouseenter={() => { highlightedIndex = index; }}
+              onmouseenter={() => {
+                highlightedIndex = index;
+              }}
             >
               <span class="item-content">
                 {#if option.icon}
@@ -307,7 +332,10 @@
     font-family: inherit;
     font-size: 14px;
     text-align: left;
-    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease,
+      box-shadow 0.15s ease;
     box-sizing: border-box;
   }
 
@@ -355,7 +383,8 @@
     transition: transform 0.15s ease;
   }
 
-  .option-icon, .item-icon {
+  .option-icon,
+  .item-icon {
     font-size: 18px;
     color: var(--google-text-secondary);
     flex-shrink: 0;
@@ -392,7 +421,9 @@
     padding: 8px 10px;
     border-bottom: 1px solid var(--google-border);
     background-color: var(--google-surface);
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
   }
 
   .search-box:focus-within {
@@ -517,33 +548,33 @@
   }
 
   /* Dark mode specific enhancements */
-  :root[data-theme="dark"] .custom-select-trigger {
+  :root[data-theme='dark'] .custom-select-trigger {
     background-color: #20262f;
     border-color: #3b4654;
   }
 
-  :root[data-theme="dark"] .custom-select-trigger:hover:not(:disabled) {
+  :root[data-theme='dark'] .custom-select-trigger:hover:not(:disabled) {
     background-color: #28303c;
     border-color: #505e70;
   }
 
-  :root[data-theme="dark"] .custom-select-menu {
+  :root[data-theme='dark'] .custom-select-menu {
     background-color: #20262f;
     border-color: #3b4654;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   }
 
-  :root[data-theme="dark"] .search-box {
+  :root[data-theme='dark'] .search-box {
     background-color: #171b21;
     border-bottom-color: #303b49;
   }
 
-  :root[data-theme="dark"] .custom-select-item:hover,
-  :root[data-theme="dark"] .custom-select-item.highlighted {
+  :root[data-theme='dark'] .custom-select-item:hover,
+  :root[data-theme='dark'] .custom-select-item.highlighted {
     background-color: #29323e;
   }
 
-  :root[data-theme="dark"] .custom-select-item.selected {
+  :root[data-theme='dark'] .custom-select-item.selected {
     background-color: #243951;
     color: var(--google-blue);
   }

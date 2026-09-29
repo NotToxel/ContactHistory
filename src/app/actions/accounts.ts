@@ -80,7 +80,6 @@ export async function selectAccount(
     await this.refreshGroups();
     await this.refreshContacts();
     await this.refreshChanges();
-    await this.refreshAllChanges();
     if (this.captures.length > 0) {
       this.navigate('contacts');
     } else {

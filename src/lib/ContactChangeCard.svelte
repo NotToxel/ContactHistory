@@ -1,8 +1,10 @@
 <script lang="ts">
   import { computeContactDiff, extractDisplayName } from './diff';
   import { computeJsonDiff, type JsonDiffResult } from './json-diff';
+  import { computeAvatarColor as getAvatarColor, getInitials } from '../app/actions/avatars';
   import type { Change } from './ipc';
   import type { BirthdayFormat } from './preferences';
+  import PhotoChangePreview from './PhotoChangePreview.svelte';
 
   let {
     change,
@@ -13,6 +15,9 @@
     snapshotSeq = null,
     committedAt = '',
     birthdayFormat = 'day-month-year',
+    accountId = '',
+    beforeSequence = null,
+    afterSequence = null,
   }: {
     change: Change;
     labels?: Map<string, string>;
@@ -22,6 +27,9 @@
     snapshotSeq?: number | null;
     committedAt?: string;
     birthdayFormat?: BirthdayFormat;
+    accountId?: string;
+    beforeSequence?: number | null;
+    afterSequence?: number | null;
   } = $props();
 
   let isExpanded = $state(false);
@@ -38,8 +46,8 @@
   const jsonDiff = $derived<JsonDiffResult>(
     computeJsonDiff(
       change.before ? (diff.cleanBefore as Record<string, unknown>) : null,
-      change.after ? (diff.cleanAfter as Record<string, unknown>) : null
-    )
+      change.after ? (diff.cleanAfter as Record<string, unknown>) : null,
+    ),
   );
 
   async function copyGitDiff() {
@@ -48,26 +56,6 @@
       copiedDiff = true;
       setTimeout(() => (copiedDiff = false), 2000);
     } catch (_) {}
-  }
-
-  const AVATAR_COLORS = [
-    '#1a73e8', '#d93025', '#e37400', '#0f9d58', '#9334e6',
-    '#0097a7', '#e91e63', '#5c6bc0', '#00897b', '#689f38',
-  ];
-
-  function getAvatarColor(str: string): string {
-    if (!str) return AVATAR_COLORS[0];
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-  }
-
-  function getInitials(name: string): string {
-    const parts = name.trim().split(/[\s@._-]+/).filter(Boolean);
-    if (!parts.length) return '?';
-    return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
   }
 
   async function copyJsonPayload() {
@@ -112,7 +100,10 @@
   <div class="change-card-main-header" onclick={() => (isExpanded = !isExpanded)}>
     <!-- Left: Avatar & Identity -->
     <div class="change-identity">
-      <div class="change-avatar" style="background-color: {avatarUrl ? 'transparent' : getAvatarColor(displayName)};">
+      <div
+        class="change-avatar"
+        style="background-color: {avatarUrl ? 'transparent' : getAvatarColor(displayName)};"
+      >
         {#if avatarUrl}
           <img src={avatarUrl} alt={displayName} class="change-avatar-img" />
         {:else}
@@ -170,7 +161,8 @@
           isExpanded = !isExpanded;
         }}
       >
-        <span class="material-symbols-outlined chevron" class:rotated={isExpanded}>expand_more</span>
+        <span class="material-symbols-outlined chevron" class:rotated={isExpanded}>expand_more</span
+        >
       </button>
     </div>
   </div>
@@ -200,55 +192,68 @@
       {#if diff.groups.length > 0}
         <div class="diff-groups-container">
           {#each diff.groups as group}
-            <div class="diff-group-card">
+            <div class="diff-group-card" class:photo-group={group.key === 'photos'}>
               <div class="diff-group-header">
                 <span class="material-symbols-outlined group-icon">{group.icon}</span>
                 <span class="group-title">{group.title}</span>
               </div>
 
               <div class="diff-group-items">
-                {#each group.items as item}
-                  {#if item.type === 'modified'}
-                    <div class="diff-item-row modified">
-                      {#if item.label}
-                        <span class="diff-item-type-tag">{item.label}</span>
-                      {/if}
-                      <div class="diff-transition-box">
-                        <div class="diff-before">
-                          <span class="diff-state-tag old">Previous</span>
-                          <span class="diff-val old-val">{item.before}</span>
-                        </div>
-                        <span class="material-symbols-outlined transition-arrow">arrow_forward</span>
-                        <div class="diff-after">
-                          <span class="diff-state-tag new">Updated</span>
-                          <span class="diff-val new-val">{item.after}</span>
+                {#if group.key === 'photos'}
+                  <PhotoChangePreview
+                    {accountId}
+                    resourceName={change.resource_name}
+                    before={change.before}
+                    after={change.after}
+                    {beforeSequence}
+                    {afterSequence}
+                  />
+                {:else}
+                  {#each group.items as item}
+                    {#if item.type === 'modified'}
+                      <div class="diff-item-row modified">
+                        {#if item.label}
+                          <span class="diff-item-type-tag">{item.label}</span>
+                        {/if}
+                        <div class="diff-transition-box">
+                          <div class="diff-before">
+                            <span class="diff-state-tag old">Previous</span>
+                            <span class="diff-val old-val">{item.before}</span>
+                          </div>
+                          <span class="material-symbols-outlined transition-arrow"
+                            >arrow_forward</span
+                          >
+                          <div class="diff-after">
+                            <span class="diff-state-tag new">Updated</span>
+                            <span class="diff-val new-val">{item.after}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  {:else if item.type === 'added'}
-                    <div class="diff-item-row added">
-                      <span class="diff-status-icon added">
-                        <span class="material-symbols-outlined">add</span>
-                      </span>
-                      {#if item.label}
-                        <span class="diff-item-type-tag added-tag">{item.label}:</span>
-                      {/if}
-                      <span class="diff-item-val">{item.text}</span>
-                      <span class="diff-action-chip added">Added</span>
-                    </div>
-                  {:else if item.type === 'removed'}
-                    <div class="diff-item-row removed">
-                      <span class="diff-status-icon removed">
-                        <span class="material-symbols-outlined">remove</span>
-                      </span>
-                      {#if item.label}
-                        <span class="diff-item-type-tag removed-tag">{item.label}:</span>
-                      {/if}
-                      <span class="diff-item-val strikethrough">{item.text}</span>
-                      <span class="diff-action-chip removed">Removed</span>
-                    </div>
-                  {/if}
-                {/each}
+                    {:else if item.type === 'added'}
+                      <div class="diff-item-row added">
+                        <span class="diff-status-icon added">
+                          <span class="material-symbols-outlined">add</span>
+                        </span>
+                        {#if item.label}
+                          <span class="diff-item-type-tag added-tag">{item.label}:</span>
+                        {/if}
+                        <span class="diff-item-val">{item.text}</span>
+                        <span class="diff-action-chip added">Added</span>
+                      </div>
+                    {:else if item.type === 'removed'}
+                      <div class="diff-item-row removed">
+                        <span class="diff-status-icon removed">
+                          <span class="material-symbols-outlined">remove</span>
+                        </span>
+                        {#if item.label}
+                          <span class="diff-item-type-tag removed-tag">{item.label}:</span>
+                        {/if}
+                        <span class="diff-item-val strikethrough">{item.text}</span>
+                        <span class="diff-action-chip removed">Removed</span>
+                      </div>
+                    {/if}
+                  {/each}
+                {/if}
               </div>
             </div>
           {/each}
@@ -279,7 +284,9 @@
               {/if}
             </span>
           {/if}
-          <span class="material-symbols-outlined chevron-sm" class:rotated={showRawDiff}>expand_more</span>
+          <span class="material-symbols-outlined chevron-sm" class:rotated={showRawDiff}
+            >expand_more</span
+          >
         </button>
       </div>
 
@@ -290,11 +297,16 @@
             <div class="diff-summary-badges">
               <span class="diff-chip diff-chip-add" title="{jsonDiff.stats.additions} added lines">
                 <span class="material-symbols-outlined chip-icon">add</span>
-                {jsonDiff.stats.additions} {jsonDiff.stats.additions === 1 ? 'addition' : 'additions'}
+                {jsonDiff.stats.additions}
+                {jsonDiff.stats.additions === 1 ? 'addition' : 'additions'}
               </span>
-              <span class="diff-chip diff-chip-del" title="{jsonDiff.stats.deletions} deleted lines">
+              <span
+                class="diff-chip diff-chip-del"
+                title="{jsonDiff.stats.deletions} deleted lines"
+              >
                 <span class="material-symbols-outlined chip-icon">remove</span>
-                {jsonDiff.stats.deletions} {jsonDiff.stats.deletions === 1 ? 'deletion' : 'deletions'}
+                {jsonDiff.stats.deletions}
+                {jsonDiff.stats.deletions === 1 ? 'deletion' : 'deletions'}
               </span>
             </div>
 
@@ -339,7 +351,9 @@
                 onclick={copyJsonPayload}
                 title="Copy full JSON payload"
               >
-                <span class="material-symbols-outlined">{copiedJson ? 'check' : 'content_copy'}</span>
+                <span class="material-symbols-outlined"
+                  >{copiedJson ? 'check' : 'content_copy'}</span
+                >
                 <span>{copiedJson ? 'Copied' : 'Copy JSON'}</span>
               </button>
             </div>
@@ -692,6 +706,10 @@
     padding: 12px 14px;
   }
 
+  .diff-group-card.photo-group {
+    width: min(100%, 380px);
+  }
+
   .diff-group-header {
     display: flex;
     align-items: center;
@@ -884,7 +902,9 @@
     cursor: pointer;
     padding: 4px 8px;
     border-radius: 6px;
-    transition: background-color 0.15s, color 0.15s;
+    transition:
+      background-color 0.15s,
+      color 0.15s;
   }
 
   .raw-diff-toggle-btn:hover {

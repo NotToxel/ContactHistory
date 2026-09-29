@@ -1,6 +1,8 @@
 <script lang="ts">
   type JsonPrimitive = string | number | boolean | null;
-  interface JsonObject { [key: string]: JsonValue }
+  interface JsonObject {
+    [key: string]: JsonValue;
+  }
   type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
 
   let {
@@ -29,14 +31,14 @@
       return Object.fromEntries(
         Object.entries(val as Record<string, unknown>)
           .filter(([k]) => !NOISE_KEYS.has(k))
-          .map(([k, v]) => [k, cleanValue(v)])
+          .map(([k, v]) => [k, cleanValue(v)]),
       );
     }
     return val;
   }
 
   const displayPayload = $derived(
-    showClean ? (cleanValue(payload) as Record<string, unknown>) : payload
+    showClean ? (cleanValue(payload) as Record<string, unknown>) : payload,
   );
 
   const jsonString = $derived(JSON.stringify(displayPayload, null, 2) ?? '');
@@ -55,25 +57,34 @@
 
   // ── Copy helpers ──────────────────────────────────────────────────────────
   async function copyText(text: string, key: string) {
-    try { await navigator.clipboard.writeText(text); } catch (_) {}
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {}
     copiedKey = key;
-    setTimeout(() => { if (copiedKey === key) copiedKey = null; }, 2000);
+    setTimeout(() => {
+      if (copiedKey === key) copiedKey = null;
+    }, 2000);
   }
 
-  function copyJson() { copyText(jsonString, '__root__'); }
+  function copyJson() {
+    copyText(jsonString, '__root__');
+  }
 
   function downloadJson() {
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = 'contact.json'; a.click();
+    a.href = url;
+    a.download = 'contact.json';
+    a.click();
     URL.revokeObjectURL(url);
   }
 
   // ── Collapse helpers ───────────────────────────────────────────────────────
   function toggleNode(path: string) {
     const next = new Set(collapsed);
-    if (next.has(path)) next.delete(path); else next.add(path);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
     collapsed = next;
   }
 
@@ -95,10 +106,16 @@
     allCollapsed = true;
   }
 
-  function expandAll() { collapsed = new Set(); allCollapsed = false; }
+  function expandAll() {
+    collapsed = new Set();
+    allCollapsed = false;
+  }
 
   // ── Syntax highlighted code view ───────────────────────────────────────────
-  interface CodeToken { type: 'key' | 'str' | 'num' | 'bool' | 'null' | 'punc' | 'ws'; text: string; }
+  interface CodeToken {
+    type: 'key' | 'str' | 'num' | 'bool' | 'null' | 'punc' | 'ws';
+    text: string;
+  }
 
   function tokenizeJson(src: string): CodeToken[] {
     const tokens: CodeToken[] = [];
@@ -113,11 +130,19 @@
       }
       // string
       if (src[i] === '"') {
-        let str = '"'; i++;
+        let str = '"';
+        i++;
         while (i < src.length) {
-          if (src[i] === '\\') { str += src[i] + src[i + 1]; i += 2; }
-          else if (src[i] === '"') { str += '"'; i++; break; }
-          else { str += src[i++]; }
+          if (src[i] === '\\') {
+            str += src[i] + src[i + 1];
+            i += 2;
+          } else if (src[i] === '"') {
+            str += '"';
+            i++;
+            break;
+          } else {
+            str += src[i++];
+          }
         }
         // check if followed by colon → it's a key
         let j = i;
@@ -142,7 +167,11 @@
           break;
         }
       }
-      if (/[{}[\]:,]/.test(src[i])) { tokens.push({ type: 'punc', text: src[i] }); i++; continue; }
+      if (/[{}[\]:,]/.test(src[i])) {
+        tokens.push({ type: 'punc', text: src[i] });
+        i++;
+        continue;
+      }
       i++;
     }
     return tokens;
@@ -189,8 +218,13 @@
     let count = 0;
     function walk(n: TreeNode) {
       if (n.type !== 'object' && n.type !== 'array') {
-        if (String(n.value).toLowerCase().includes(searchLower) ||
-            String(n.key ?? '').toLowerCase().includes(searchLower)) count++;
+        if (
+          String(n.value).toLowerCase().includes(searchLower) ||
+          String(n.key ?? '')
+            .toLowerCase()
+            .includes(searchLower)
+        )
+          count++;
       }
       n.children?.forEach(walk);
     }
@@ -204,9 +238,11 @@
     if (!query) return escapeHtml(text);
     const idx = text.toLowerCase().indexOf(query.toLowerCase());
     if (idx < 0) return escapeHtml(text);
-    return escapeHtml(text.slice(0, idx)) +
+    return (
+      escapeHtml(text.slice(0, idx)) +
       `<mark class="json-match">${escapeHtml(text.slice(idx, idx + query.length))}</mark>` +
-      escapeHtml(text.slice(idx + query.length));
+      escapeHtml(text.slice(idx + query.length))
+    );
   }
 
   function escapeHtml(s: string): string {
@@ -288,7 +324,9 @@
       {/if}
 
       <button class="cpv-icon-btn" onclick={copyJson} title="Copy JSON to clipboard">
-        <span class="material-symbols-outlined">{copiedKey === '__root__' ? 'check' : 'content_copy'}</span>
+        <span class="material-symbols-outlined"
+          >{copiedKey === '__root__' ? 'check' : 'content_copy'}</span
+        >
       </button>
       <button class="cpv-icon-btn" onclick={downloadJson} title="Download as JSON file">
         <span class="material-symbols-outlined">download</span>
@@ -388,13 +426,17 @@
           {/if}
           {#if node.type === 'object'}
             {#if isCollapsed}
-              <span class="cpv-collapse-preview">{`{ ${node.childCount} ${node.childCount === 1 ? 'key' : 'keys'} }`}</span>
+              <span class="cpv-collapse-preview"
+                >{`{ ${node.childCount} ${node.childCount === 1 ? 'key' : 'keys'} }`}</span
+              >
             {:else}
               <span class="cpv-brace">{`{`}</span>
             {/if}
           {:else if node.type === 'array'}
             {#if isCollapsed}
-              <span class="cpv-collapse-preview">{`[ ${node.childCount} ${node.childCount === 1 ? 'item' : 'items'} ]`}</span>
+              <span class="cpv-collapse-preview"
+                >{`[ ${node.childCount} ${node.childCount === 1 ? 'item' : 'items'} ]`}</span
+              >
             {:else}
               <span class="cpv-bracket">{`[`}</span>
             {/if}
@@ -421,10 +463,15 @@
           {#if !isRoot}
             <button
               class="cpv-copy-leaf"
-              onclick={(e) => { e.stopPropagation(); copyText(String(node.value ?? ''), node.path); }}
+              onclick={(e) => {
+                e.stopPropagation();
+                copyText(String(node.value ?? ''), node.path);
+              }}
               title="Copy value"
             >
-              <span class="material-symbols-outlined">{copiedKey === node.path ? 'check' : 'content_copy'}</span>
+              <span class="material-symbols-outlined"
+                >{copiedKey === node.path ? 'check' : 'content_copy'}</span
+              >
             </button>
           {/if}
         </div>
@@ -488,10 +535,14 @@
     font-size: 12.5px;
     color: var(--google-text-secondary);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition:
+      background 0.15s,
+      color 0.15s;
   }
 
-  .cpv-mode-btn .material-symbols-outlined { font-size: 15px; }
+  .cpv-mode-btn .material-symbols-outlined {
+    font-size: 15px;
+  }
 
   .cpv-mode-btn.active {
     background: var(--google-blue-surface);
@@ -526,7 +577,9 @@
     outline: none;
   }
 
-  .cpv-search-input:focus { border-color: var(--google-blue); }
+  .cpv-search-input:focus {
+    border-color: var(--google-blue);
+  }
 
   .cpv-match-badge {
     position: absolute;
@@ -562,7 +615,9 @@
     background: transparent;
     color: var(--google-text-secondary);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition:
+      background 0.15s,
+      color 0.15s;
   }
 
   .cpv-icon-btn:hover {
@@ -570,7 +625,9 @@
     color: var(--google-text);
   }
 
-  .cpv-icon-btn .material-symbols-outlined { font-size: 17px; }
+  .cpv-icon-btn .material-symbols-outlined {
+    font-size: 17px;
+  }
 
   .cpv-pill-btn {
     display: inline-flex;
@@ -587,7 +644,9 @@
     white-space: nowrap;
   }
 
-  .cpv-pill-btn .material-symbols-outlined { font-size: 14px; }
+  .cpv-pill-btn .material-symbols-outlined {
+    font-size: 14px;
+  }
 
   .cpv-pill-btn.active {
     background: var(--google-blue-surface);
@@ -595,7 +654,9 @@
     color: var(--google-blue);
   }
 
-  .cpv-pill-btn:hover:not(.active) { background: var(--google-surface-hover); }
+  .cpv-pill-btn:hover:not(.active) {
+    background: var(--google-surface-hover);
+  }
 
   /* ── Meta bar ───────────────────────────────────────────────────────── */
   .cpv-meta-bar {
@@ -680,12 +741,19 @@
     color: inherit;
   }
 
-  .cpv-node-row:hover .cpv-copy-leaf { opacity: 1; }
-  .cpv-node-row:hover { background: rgba(0,0,0,0.03); }
-  :root[data-theme="dark"] .cpv-node-row:hover { background: rgba(255,255,255,0.04); }
+  .cpv-node-row:hover .cpv-copy-leaf {
+    opacity: 1;
+  }
+  .cpv-node-row:hover {
+    background: rgba(0, 0, 0, 0.03);
+  }
+  :root[data-theme='dark'] .cpv-node-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
 
-  .cpv-node-clickable { cursor: pointer; }
-
+  .cpv-node-clickable {
+    cursor: pointer;
+  }
 
   .cpv-caret {
     font-size: 15px;
@@ -697,9 +765,14 @@
     margin-top: 2px;
   }
 
-  .cpv-caret.rotated { transform: rotate(90deg); }
+  .cpv-caret.rotated {
+    transform: rotate(90deg);
+  }
 
-  .cpv-caret-spacer { width: 15px; flex-shrink: 0; }
+  .cpv-caret-spacer {
+    width: 15px;
+    flex-shrink: 0;
+  }
 
   .cpv-key {
     color: var(--cpv-key-color, #1a6fe0);
@@ -708,14 +781,17 @@
     user-select: text;
   }
 
-  .cpv-key-index { color: var(--cpv-index-color, #6a5acd); }
+  .cpv-key-index {
+    color: var(--cpv-index-color, #6a5acd);
+  }
 
   .cpv-colon {
     color: var(--google-text-secondary);
     margin-right: 2px;
   }
 
-  .cpv-brace, .cpv-bracket {
+  .cpv-brace,
+  .cpv-bracket {
     color: var(--google-text);
     font-weight: 500;
   }
@@ -786,13 +862,19 @@
     color: var(--google-text-secondary);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.15s, background 0.15s;
+    transition:
+      opacity 0.15s,
+      background 0.15s;
     flex-shrink: 0;
     margin-left: 4px;
   }
 
-  .cpv-copy-leaf:hover { background: var(--google-surface-hover); }
-  .cpv-copy-leaf .material-symbols-outlined { font-size: 12px; }
+  .cpv-copy-leaf:hover {
+    background: var(--google-surface-hover);
+  }
+  .cpv-copy-leaf .material-symbols-outlined {
+    font-size: 12px;
+  }
 
   .cpv-empty {
     color: var(--google-text-secondary);
@@ -822,15 +904,30 @@
   }
 
   /* Token colors */
-  .tok-key { color: var(--cpv-key-color, #1a6fe0); font-weight: 600; }
-  .tok-str { color: var(--cpv-str-color, #1e7e34); }
-  .tok-num { color: var(--cpv-num-color, #d97706); }
-  .tok-bool { color: var(--cpv-bool-color, #be185d); font-weight: 600; }
-  .tok-null { color: var(--cpv-null-color, #6b7280); font-style: italic; }
-  .tok-punc { color: var(--google-text); }
+  .tok-key {
+    color: var(--cpv-key-color, #1a6fe0);
+    font-weight: 600;
+  }
+  .tok-str {
+    color: var(--cpv-str-color, #1e7e34);
+  }
+  .tok-num {
+    color: var(--cpv-num-color, #d97706);
+  }
+  .tok-bool {
+    color: var(--cpv-bool-color, #be185d);
+    font-weight: 600;
+  }
+  .tok-null {
+    color: var(--cpv-null-color, #6b7280);
+    font-style: italic;
+  }
+  .tok-punc {
+    color: var(--google-text);
+  }
 
   /* ── Dark theme overrides ───────────────────────────────────────────── */
-  :root[data-theme="dark"] {
+  :root[data-theme='dark'] {
     --cpv-key-color: #88b4ff;
     --cpv-index-color: #c4b0ff;
     --cpv-str-color: #6ee7a0;
@@ -847,7 +944,7 @@
     padding: 0 1px;
   }
 
-  :root[data-theme="dark"] :global(.json-match) {
+  :root[data-theme='dark'] :global(.json-match) {
     background: #854d0e;
     color: #fef9c3;
   }

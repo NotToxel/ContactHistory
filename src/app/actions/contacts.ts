@@ -246,3 +246,23 @@ export function restoreContactRevision(
   this.selectedPhotoUrl = null;
   this.media = this.mediaCache.get(this.originalDetail.resource_name) || [];
 }
+
+export function selectPreviousContact(
+  this: Pick<AppModel, 'detailIndex' | 'hasPreviousContact' | 'selectContact' | 'sortedContacts'>,
+): void {
+  if (this.hasPreviousContact && this.detailIndex > 0) {
+    this.selectContact(this.sortedContacts[this.detailIndex - 1]);
+  }
+}
+
+export function selectNextContact(
+  this: Pick<AppModel, 'detailIndex' | 'hasNextContact' | 'selectContact' | 'sortedContacts'>,
+): void {
+  if (
+    this.hasNextContact &&
+    this.detailIndex >= 0 &&
+    this.detailIndex < this.sortedContacts.length - 1
+  ) {
+    this.selectContact(this.sortedContacts[this.detailIndex + 1]);
+  }
+}

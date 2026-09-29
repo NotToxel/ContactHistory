@@ -91,7 +91,8 @@ export function formatPhone(value: string, canonical?: string, country?: string)
   const raw = (value || '').trim();
   if (!raw) return { value: '', uri: '' };
 
-  const resolvedRegion = country && country !== 'auto' ? country.toUpperCase() : detectSystemCountry();
+  const resolvedRegion =
+    country && country !== 'auto' ? country.toUpperCase() : detectSystemCountry();
   const defaultCountry: CountryCode | undefined =
     resolvedRegion && isSupportedCountry(resolvedRegion as CountryCode)
       ? (resolvedRegion as CountryCode)

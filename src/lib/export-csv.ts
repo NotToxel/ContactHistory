@@ -43,7 +43,7 @@ export function formatGoogleCsvBirthday(birthdayObj: any): string {
  */
 export function resolveGoogleCsvLabels(
   payload: Record<string, unknown>,
-  groupMap?: Map<string, string> | Record<string, string>
+  groupMap?: Map<string, string> | Record<string, string>,
 ): string {
   const mems = (payload.memberships as Array<any>) || [];
   const labels: string[] = [];
@@ -74,7 +74,7 @@ export function resolveGoogleCsvLabels(
  */
 export function generateContactCsv(
   contact: Contact,
-  groupMap?: Map<string, string> | Record<string, string>
+  groupMap?: Map<string, string> | Record<string, string>,
 ): string {
   const payload = (contact.payload || {}) as Record<string, unknown>;
   const names = (payload.names as Array<any>) || [];
@@ -89,7 +89,7 @@ export function generateContactCsv(
   let emails = (payload.emailAddresses as Array<any>) || [];
   if (emails.length === 0 && Array.isArray(payload.emails)) {
     emails = payload.emails.map((e: any) =>
-      typeof e === 'string' ? { value: e, type: 'Home' } : e
+      typeof e === 'string' ? { value: e, type: 'Home' } : e,
     );
   }
 
@@ -97,7 +97,7 @@ export function generateContactCsv(
   let phones = (payload.phoneNumbers as Array<any>) || [];
   if (phones.length === 0 && Array.isArray(payload.phones)) {
     phones = payload.phones.map((p: any) =>
-      typeof p === 'string' ? { value: p, type: 'Mobile' } : p
+      typeof p === 'string' ? { value: p, type: 'Mobile' } : p,
     );
   }
 
@@ -186,30 +186,30 @@ export function generateContactCsv(
   // Emails
   for (let i = 0; i < maxEmail; i++) {
     const em = emails[i];
-    const emLabel = em ? (em.formattedType || em.type || 'Home') : '';
-    const emVal = em ? (em.value || '') : '';
+    const emLabel = em ? em.formattedType || em.type || 'Home' : '';
+    const emVal = em ? em.value || '' : '';
     record.push(emLabel, emVal);
   }
 
   // Phones
   for (let i = 0; i < maxPhone; i++) {
     const ph = phones[i];
-    const phLabel = ph ? (ph.formattedType || ph.type || 'Mobile') : '';
-    const phVal = ph ? (ph.value || '') : '';
+    const phLabel = ph ? ph.formattedType || ph.type || 'Mobile' : '';
+    const phVal = ph ? ph.value || '' : '';
     record.push(phLabel, phVal);
   }
 
   // Addresses
   for (let i = 0; i < maxAddress; i++) {
     const ad = addresses[i];
-    const adLabel = ad ? (ad.formattedType || ad.type || 'Home') : '';
-    const street = ad ? (ad.streetAddress || '') : '';
-    const ext = ad ? (ad.extendedAddress || '') : '';
-    const city = ad ? (ad.city || '') : '';
-    const region = ad ? (ad.region || '') : '';
-    const postcode = ad ? (ad.postalCode || '') : '';
-    const country = ad ? (ad.country || '') : '';
-    const poBox = ad ? (ad.poBox || '') : '';
+    const adLabel = ad ? ad.formattedType || ad.type || 'Home' : '';
+    const street = ad ? ad.streetAddress || '' : '';
+    const ext = ad ? ad.extendedAddress || '' : '';
+    const city = ad ? ad.city || '' : '';
+    const region = ad ? ad.region || '' : '';
+    const postcode = ad ? ad.postalCode || '' : '';
+    const country = ad ? ad.country || '' : '';
+    const poBox = ad ? ad.poBox || '' : '';
     record.push(adLabel, street, ext, city, region, postcode, country, poBox);
   }
 
@@ -225,7 +225,7 @@ export function generateContactCsv(
  */
 export function generateMultipleContactsCsv(
   contacts: Contact[],
-  groupMap?: Map<string, string> | Record<string, string>
+  groupMap?: Map<string, string> | Record<string, string>,
 ): string {
   if (contacts.length === 0) return '';
 
@@ -238,13 +238,13 @@ export function generateMultipleContactsCsv(
     let emails = (payload.emailAddresses as Array<any>) || [];
     if (emails.length === 0 && Array.isArray(payload.emails)) {
       emails = payload.emails.map((e: any) =>
-        typeof e === 'string' ? { value: e, type: 'Home' } : e
+        typeof e === 'string' ? { value: e, type: 'Home' } : e,
       );
     }
     let phones = (payload.phoneNumbers as Array<any>) || [];
     if (phones.length === 0 && Array.isArray(payload.phones)) {
       phones = payload.phones.map((p: any) =>
-        typeof p === 'string' ? { value: p, type: 'Mobile' } : p
+        typeof p === 'string' ? { value: p, type: 'Mobile' } : p,
       );
     }
     const addresses = (payload.addresses as Array<any>) || [];
@@ -342,30 +342,30 @@ export function generateMultipleContactsCsv(
     // Emails
     for (let i = 0; i < maxEmail; i++) {
       const em = emails[i];
-      const emLabel = em ? (em.formattedType || em.type || 'Home') : '';
-      const emVal = em ? (em.value || '') : '';
+      const emLabel = em ? em.formattedType || em.type || 'Home' : '';
+      const emVal = em ? em.value || '' : '';
       record.push(emLabel, emVal);
     }
 
     // Phones
     for (let i = 0; i < maxPhone; i++) {
       const ph = phones[i];
-      const phLabel = ph ? (ph.formattedType || ph.type || 'Mobile') : '';
-      const phVal = ph ? (ph.value || '') : '';
+      const phLabel = ph ? ph.formattedType || ph.type || 'Mobile' : '';
+      const phVal = ph ? ph.value || '' : '';
       record.push(phLabel, phVal);
     }
 
     // Addresses
     for (let i = 0; i < maxAddress; i++) {
       const ad = addresses[i];
-      const adLabel = ad ? (ad.formattedType || ad.type || 'Home') : '';
-      const street = ad ? (ad.streetAddress || '') : '';
-      const ext = ad ? (ad.extendedAddress || '') : '';
-      const city = ad ? (ad.city || '') : '';
-      const region = ad ? (ad.region || '') : '';
-      const postcode = ad ? (ad.postalCode || '') : '';
-      const country = ad ? (ad.country || '') : '';
-      const poBox = ad ? (ad.poBox || '') : '';
+      const adLabel = ad ? ad.formattedType || ad.type || 'Home' : '';
+      const street = ad ? ad.streetAddress || '' : '';
+      const ext = ad ? ad.extendedAddress || '' : '';
+      const city = ad ? ad.city || '' : '';
+      const region = ad ? ad.region || '' : '';
+      const postcode = ad ? ad.postalCode || '' : '';
+      const country = ad ? ad.country || '' : '';
+      const poBox = ad ? ad.poBox || '' : '';
       record.push(adLabel, street, ext, city, region, postcode, country, poBox);
     }
 
@@ -387,7 +387,11 @@ export function contactToVCard(contact: Contact): string {
   const middle = n.middleName || '';
   const prefix = n.honorificPrefix || '';
   const suffix = n.honorificSuffix || '';
-  const displayName = contact.display_name || n.displayName || [prefix, given, middle, family, suffix].filter(Boolean).join(' ') || 'Unnamed Contact';
+  const displayName =
+    contact.display_name ||
+    n.displayName ||
+    [prefix, given, middle, family, suffix].filter(Boolean).join(' ') ||
+    'Unnamed Contact';
 
   const lines: string[] = [
     'BEGIN:VCARD',
@@ -400,7 +404,10 @@ export function contactToVCard(contact: Contact): string {
   const emails = (p.emailAddresses as Array<any>) || (p.emails as Array<any>) || [];
   for (const em of emails) {
     const val = typeof em === 'string' ? em : em?.value;
-    const type = typeof em === 'object' && (em?.type || em?.formattedType) ? (em.type || em.formattedType).toUpperCase() : 'INTERNET';
+    const type =
+      typeof em === 'object' && (em?.type || em?.formattedType)
+        ? (em.type || em.formattedType).toUpperCase()
+        : 'INTERNET';
     if (val) lines.push(`EMAIL;TYPE=${type}:${val}`);
   }
 
@@ -408,7 +415,10 @@ export function contactToVCard(contact: Contact): string {
   const phones = (p.phoneNumbers as Array<any>) || (p.phones as Array<any>) || [];
   for (const ph of phones) {
     const val = typeof ph === 'string' ? ph : ph?.value;
-    const type = typeof ph === 'object' && (ph?.type || ph?.formattedType) ? (ph.type || ph.formattedType).toUpperCase() : 'CELL';
+    const type =
+      typeof ph === 'object' && (ph?.type || ph?.formattedType)
+        ? (ph.type || ph.formattedType).toUpperCase()
+        : 'CELL';
     if (val) lines.push(`TEL;TYPE=${type}:${val}`);
   }
 
@@ -446,7 +456,10 @@ export function contactToVCard(contact: Contact): string {
 
   // Notes
   const biographies = (p.biographies as Array<any>) || [];
-  const notes = biographies.map((b: any) => b?.value || '').filter(Boolean).join('\n');
+  const notes = biographies
+    .map((b: any) => b?.value || '')
+    .filter(Boolean)
+    .join('\n');
   if (notes) {
     lines.push(`NOTE:${notes.replace(/\r?\n/g, '\\n')}`);
   }

@@ -71,7 +71,10 @@ describe('photos module', () => {
     const payload = {
       emailAddresses: [
         { value: 'personal@other.com', metadata: { source: { type: 'CONTACT', id: 'c1' } } },
-        { value: 'work@google.com', metadata: { source: { type: 'PROFILE', id: 'profile-id-99' } } },
+        {
+          value: 'work@google.com',
+          metadata: { source: { type: 'PROFILE', id: 'profile-id-99' } },
+        },
       ],
     };
     const photoObj = {

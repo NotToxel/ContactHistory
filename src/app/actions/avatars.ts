@@ -1,3 +1,4 @@
+import { GOOGLE_AVATAR_COLORS } from '../configuration';
 import { type Contact, type MediaView } from '../../lib/ipc';
 import type { AppModel } from '../model.svelte';
 // Contact Parsing Helpers
@@ -16,11 +17,15 @@ export function getDisplayName(
   return 'Unknown';
 }
 
-export function getAvatarColor(this: Pick<AppModel, 'GOOGLE_AVATAR_COLORS'>, name: string): string {
-  if (!name) return this.GOOGLE_AVATAR_COLORS[0];
+export function computeAvatarColor(name: string): string {
+  if (!name) return GOOGLE_AVATAR_COLORS[0];
   const char = name.trim().charAt(0).toUpperCase();
   const code = char.charCodeAt(0);
-  return this.GOOGLE_AVATAR_COLORS[code % this.GOOGLE_AVATAR_COLORS.length];
+  return GOOGLE_AVATAR_COLORS[code % GOOGLE_AVATAR_COLORS.length];
+}
+
+export function getAvatarColor(this: Pick<AppModel, 'GOOGLE_AVATAR_COLORS'>, name: string): string {
+  return computeAvatarColor(name);
 }
 
 export function getAvatarInitial(name: string): string {

@@ -91,9 +91,10 @@
     background-color 0.15s ease;
 }
 
-/* Expand smoothly on hover, focus-within, or when any label is selected or item is selected */
+/* Expand on hover, visible keyboard focus, or while labels are selected. */
 .label-nav-item:hover .nav-checkbox,
-.label-nav-item:focus-within .nav-checkbox,
+.label-nav-item:focus-visible .nav-checkbox,
+.label-nav-item:has(.only-btn:focus-visible) .nav-checkbox,
 .sidebar-section.has-selected-labels .label-nav-item .nav-checkbox,
 .label-nav-item.is-selected .nav-checkbox,
 .label-nav-item .nav-checkbox.checked {
@@ -145,7 +146,8 @@
 }
 
 .label-nav-item:hover .only-btn,
-.label-nav-item:focus-within .only-btn {
+.label-nav-item:focus-visible .only-btn,
+.label-nav-item:has(.only-btn:focus-visible) .only-btn {
   display: inline-flex;
 }
 

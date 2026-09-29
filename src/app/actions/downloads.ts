@@ -23,6 +23,19 @@ export async function copyFieldValue(
   } catch (_) {}
 }
 
+export async function copyContactSummary(
+  this: Pick<AppModel, 'formatContactSummary' | 'showToast'>,
+  c: Contact,
+): Promise<void> {
+  try {
+    const summary = this.formatContactSummary(c);
+    await navigator.clipboard.writeText(summary);
+    this.showToast('Contact summary copied to clipboard.');
+  } catch (_) {
+    this.showToast('Could not copy contact summary.');
+  }
+}
+
 export function downloadContactJson(
   this: Pick<AppModel, 'getDisplayName' | 'showToast' | 'triggerFileDownload'>,
   c: Contact,
@@ -236,9 +249,7 @@ export function selectAllVisible(
 export function clearContactSelection(
   this: Pick<
     AppModel,
-    | 'clearContactSelectionPreview'
-    | 'selectionAnchorKey'
-    | 'selectedContactKeys'
+    'clearContactSelectionPreview' | 'selectionAnchorKey' | 'selectedContactKeys'
   >,
 ): void {
   this.selectedContactKeys = [];
@@ -278,7 +289,9 @@ async function saveSelectedExport(
   try {
     const destination = await save({
       defaultPath: filename,
-      filters: [{ name: { csv: 'Google CSV', vcf: 'vCard', json: 'JSON' }[format], extensions: [format] }],
+      filters: [
+        { name: { csv: 'Google CSV', vcf: 'vCard', json: 'JSON' }[format], extensions: [format] },
+      ],
     });
     if (!destination) return;
     await api.saveContactExport(destination, content);

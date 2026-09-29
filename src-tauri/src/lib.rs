@@ -262,15 +262,22 @@ async fn retry_media(account_id: String) -> Result<usize, String> {
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn schedule_state() -> Result<bool, String> {
-    let store = store()?;
-    let config = scheduler::load_config(&store);
-    Ok(config.enabled)
+async fn schedule_state() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let store = store()?;
+        Ok(scheduler::load_config(&store).enabled)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn get_schedule_config() -> Result<scheduler::ScheduleConfig, String> {
-    let store = store()?;
-    Ok(scheduler::load_config(&store))
+async fn get_schedule_config() -> Result<scheduler::ScheduleConfig, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let store = store()?;
+        Ok(scheduler::load_config(&store))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 fn save_schedule_config(config: scheduler::ScheduleConfig) -> Result<(), String> {

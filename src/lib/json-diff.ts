@@ -213,7 +213,7 @@ export function buildSplitRows(lines: DiffLine[]): SplitDiffRow[] {
  */
 export function computeJsonDiff(
   beforeObj: Record<string, unknown> | null | undefined,
-  afterObj: Record<string, unknown> | null | undefined
+  afterObj: Record<string, unknown> | null | undefined,
 ): JsonDiffResult {
   const beforeStr = beforeObj != null ? JSON.stringify(beforeObj, null, 2) : '';
   const afterStr = afterObj != null ? JSON.stringify(afterObj, null, 2) : '';

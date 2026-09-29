@@ -1,5 +1,6 @@
 import { formatPhone } from './phone';
 import { formatBirthdayDate, type BirthdayFormat } from './preferences';
+import { getPhotoUrl } from '../app/actions/avatars';
 
 export type DiffType = 'added' | 'removed' | 'modified';
 
@@ -35,8 +36,18 @@ export interface ContactDiffResult {
 }
 
 const MONTHS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 export function cleanPayload(obj: any): any {
@@ -93,14 +104,15 @@ export function computeContactDiff(
   beforeRaw: Record<string, unknown> | null,
   afterRaw: Record<string, unknown> | null,
   labels: Map<string, string> = new Map(),
-  birthdayFormat: BirthdayFormat = 'day-month-year'
+  birthdayFormat: BirthdayFormat = 'day-month-year',
 ): ContactDiffResult {
   const cleanBefore = beforeRaw ? cleanPayload(beforeRaw) : null;
   const cleanAfter = afterRaw ? cleanPayload(afterRaw) : null;
 
-  const displayName = extractDisplayName(afterRaw) !== 'Unknown'
-    ? extractDisplayName(afterRaw)
-    : extractDisplayName(beforeRaw);
+  const displayName =
+    extractDisplayName(afterRaw) !== 'Unknown'
+      ? extractDisplayName(afterRaw)
+      : extractDisplayName(beforeRaw);
 
   if (!beforeRaw && afterRaw) {
     // Contact Added
@@ -120,7 +132,9 @@ export function computeContactDiff(
   if (beforeRaw && !afterRaw) {
     // Contact Removed
     const groups = extractAllFieldsAsGroups(cleanBefore, labels, 'removed', birthdayFormat);
-    const badges: SummaryBadge[] = [{ label: 'Deleted Contact', type: 'removed', icon: 'person_remove' }];
+    const badges: SummaryBadge[] = [
+      { label: 'Deleted Contact', type: 'removed', icon: 'person_remove' },
+    ];
     return {
       displayName,
       kind: 'removed',
@@ -142,19 +156,25 @@ export function computeContactDiff(
   // 1. Names
   const beforeNames = (b.names as Array<any>) || [];
   const afterNames = (a.names as Array<any>) || [];
-  const beforeNameStr = beforeNames[0]?.displayName || [beforeNames[0]?.givenName, beforeNames[0]?.familyName].filter(Boolean).join(' ');
-  const afterNameStr = afterNames[0]?.displayName || [afterNames[0]?.givenName, afterNames[0]?.familyName].filter(Boolean).join(' ');
+  const beforeNameStr =
+    beforeNames[0]?.displayName ||
+    [beforeNames[0]?.givenName, beforeNames[0]?.familyName].filter(Boolean).join(' ');
+  const afterNameStr =
+    afterNames[0]?.displayName ||
+    [afterNames[0]?.givenName, afterNames[0]?.familyName].filter(Boolean).join(' ');
   if (beforeNameStr !== afterNameStr && (beforeNameStr || afterNameStr)) {
     groups.push({
       key: 'names',
       title: 'Name',
       icon: 'badge',
-      items: [{
-        type: 'modified',
-        before: beforeNameStr || '(not set)',
-        after: afterNameStr || '(removed)',
-        text: `Name changed to "${afterNameStr}"`,
-      }],
+      items: [
+        {
+          type: 'modified',
+          before: beforeNameStr || '(not set)',
+          after: afterNameStr || '(removed)',
+          text: `Name changed to "${afterNameStr}"`,
+        },
+      ],
     });
     badges.push({ label: 'Name changed', type: 'modified', icon: 'badge' });
   }
@@ -216,8 +236,10 @@ export function computeContactDiff(
     const added = phoneItems.filter((i) => i.type === 'added').length;
     const removed = phoneItems.filter((i) => i.type === 'removed').length;
     const modified = phoneItems.filter((i) => i.type === 'modified').length;
-    if (added && !removed && !modified) badges.push({ label: `+${added} Phone`, type: 'added', icon: 'call' });
-    else if (removed && !added && !modified) badges.push({ label: `-${removed} Phone`, type: 'removed', icon: 'call' });
+    if (added && !removed && !modified)
+      badges.push({ label: `+${added} Phone`, type: 'added', icon: 'call' });
+    else if (removed && !added && !modified)
+      badges.push({ label: `-${removed} Phone`, type: 'removed', icon: 'call' });
     else badges.push({ label: 'Phones updated', type: 'modified', icon: 'call' });
   }
 
@@ -274,7 +296,8 @@ export function computeContactDiff(
     const added = emailItems.filter((i) => i.type === 'added').length;
     const removed = emailItems.filter((i) => i.type === 'removed').length;
     if (added && !removed) badges.push({ label: `+${added} Email`, type: 'added', icon: 'mail' });
-    else if (removed && !added) badges.push({ label: `-${removed} Email`, type: 'removed', icon: 'mail' });
+    else if (removed && !added)
+      badges.push({ label: `-${removed} Email`, type: 'removed', icon: 'mail' });
     else badges.push({ label: 'Emails updated', type: 'modified', icon: 'mail' });
   }
 
@@ -315,27 +338,35 @@ export function computeContactDiff(
     });
     const added = addrItems.filter((i) => i.type === 'added').length;
     const removed = addrItems.filter((i) => i.type === 'removed').length;
-    if (added && !removed) badges.push({ label: `+${added} Address`, type: 'added', icon: 'home_pin' });
-    else if (removed && !added) badges.push({ label: `Address removed`, type: 'removed', icon: 'home_pin' });
+    if (added && !removed)
+      badges.push({ label: `+${added} Address`, type: 'added', icon: 'home_pin' });
+    else if (removed && !added)
+      badges.push({ label: `Address removed`, type: 'removed', icon: 'home_pin' });
     else badges.push({ label: 'Addresses updated', type: 'modified', icon: 'home_pin' });
   }
 
   // 5. Work & Organizations
   const beforeOrgs = (b.organizations as Array<any>) || [];
   const afterOrgs = (a.organizations as Array<any>) || [];
-  const beforeOrgStr = [beforeOrgs[0]?.name, beforeOrgs[0]?.title, beforeOrgs[0]?.department].filter(Boolean).join(' · ');
-  const afterOrgStr = [afterOrgs[0]?.name, afterOrgs[0]?.title, afterOrgs[0]?.department].filter(Boolean).join(' · ');
+  const beforeOrgStr = [beforeOrgs[0]?.name, beforeOrgs[0]?.title, beforeOrgs[0]?.department]
+    .filter(Boolean)
+    .join(' · ');
+  const afterOrgStr = [afterOrgs[0]?.name, afterOrgs[0]?.title, afterOrgs[0]?.department]
+    .filter(Boolean)
+    .join(' · ');
   if (beforeOrgStr !== afterOrgStr && (beforeOrgStr || afterOrgStr)) {
     groups.push({
       key: 'organizations',
       title: 'Work & Company',
       icon: 'business',
-      items: [{
-        type: !beforeOrgStr ? 'added' : !afterOrgStr ? 'removed' : 'modified',
-        before: beforeOrgStr || '(none)',
-        after: afterOrgStr || '(removed)',
-        text: afterOrgStr || 'Work info removed',
-      }],
+      items: [
+        {
+          type: !beforeOrgStr ? 'added' : !afterOrgStr ? 'removed' : 'modified',
+          before: beforeOrgStr || '(none)',
+          after: afterOrgStr || '(removed)',
+          text: afterOrgStr || 'Work info removed',
+        },
+      ],
     });
     badges.push({ label: 'Job / Work changed', type: 'modified', icon: 'business' });
   }
@@ -348,12 +379,14 @@ export function computeContactDiff(
       key: 'birthdays',
       title: 'Birthday',
       icon: 'cake',
-      items: [{
-        type: !beforeBday ? 'added' : !afterBday ? 'removed' : 'modified',
-        before: beforeBday || '(not set)',
-        after: afterBday || '(removed)',
-        text: afterBday || 'Birthday removed',
-      }],
+      items: [
+        {
+          type: !beforeBday ? 'added' : !afterBday ? 'removed' : 'modified',
+          before: beforeBday || '(not set)',
+          after: afterBday || '(removed)',
+          text: afterBday || 'Birthday removed',
+        },
+      ],
     });
     badges.push({ label: 'Birthday updated', type: 'modified', icon: 'cake' });
   }
@@ -416,30 +449,32 @@ export function computeContactDiff(
       key: 'biographies',
       title: 'Notes',
       icon: 'description',
-      items: [{
-        type: !beforeBio ? 'added' : !afterBio ? 'removed' : 'modified',
-        before: beforeBio || '(empty)',
-        after: afterBio || '(cleared)',
-        text: afterBio || 'Note cleared',
-      }],
+      items: [
+        {
+          type: !beforeBio ? 'added' : !afterBio ? 'removed' : 'modified',
+          before: beforeBio || '(empty)',
+          after: afterBio || '(cleared)',
+          text: afterBio || 'Note cleared',
+        },
+      ],
     });
     badges.push({ label: 'Notes updated', type: 'modified', icon: 'description' });
   }
 
   // 9. Photos
-  const beforePhotos = (b.photos as Array<any>) || [];
-  const afterPhotos = (a.photos as Array<any>) || [];
-  const beforePhotoUrl = beforePhotos[0]?.url || '';
-  const afterPhotoUrl = afterPhotos[0]?.url || '';
+  const beforePhotoUrl = getPhotoUrl(beforeRaw || {});
+  const afterPhotoUrl = getPhotoUrl(afterRaw || {});
   if (beforePhotoUrl !== afterPhotoUrl && (beforePhotoUrl || afterPhotoUrl)) {
     groups.push({
       key: 'photos',
       title: 'Photo',
       icon: 'image',
-      items: [{
-        type: !beforePhotoUrl ? 'added' : !afterPhotoUrl ? 'removed' : 'modified',
-        text: !afterPhotoUrl ? 'Profile picture removed' : 'Profile picture updated',
-      }],
+      items: [
+        {
+          type: !beforePhotoUrl ? 'added' : !afterPhotoUrl ? 'removed' : 'modified',
+          text: !afterPhotoUrl ? 'Profile picture removed' : 'Profile picture updated',
+        },
+      ],
     });
     badges.push({ label: 'Photo updated', type: 'modified', icon: 'image' });
   }
@@ -452,12 +487,14 @@ export function computeContactDiff(
       key: 'nicknames',
       title: 'Nickname',
       icon: 'alternate_email',
-      items: [{
-        type: !beforeNick ? 'added' : !afterNick ? 'removed' : 'modified',
-        before: beforeNick,
-        after: afterNick,
-        text: afterNick || 'Nickname removed',
-      }],
+      items: [
+        {
+          type: !beforeNick ? 'added' : !afterNick ? 'removed' : 'modified',
+          before: beforeNick,
+          after: afterNick,
+          text: afterNick || 'Nickname removed',
+        },
+      ],
     });
   }
 
@@ -501,7 +538,13 @@ export function computeContactDiff(
     const index = unmatchedBefore.findIndex((bc) => bc.key === c.key);
     if (index >= 0) {
       const old = unmatchedBefore.splice(index, 1)[0];
-      customItems.push({ type: 'modified', label: c.key, before: old.value, after: c.value, text: c.value });
+      customItems.push({
+        type: 'modified',
+        label: c.key,
+        before: old.value,
+        after: c.value,
+        text: c.value,
+      });
     } else {
       customItems.push({ type: 'added', label: c.key, text: c.value });
     }
@@ -521,9 +564,21 @@ export function computeContactDiff(
 
   // 13. Catch-all for other fields not explicitly covered
   const handledKeys = new Set([
-    'names', 'phoneNumbers', 'emailAddresses', 'addresses', 'organizations',
-    'birthdays', 'memberships', 'biographies', 'photos', 'nicknames', 'urls', 'userDefined',
-    'metadata', 'etag', 'resourceName',
+    'names',
+    'phoneNumbers',
+    'emailAddresses',
+    'addresses',
+    'organizations',
+    'birthdays',
+    'memberships',
+    'biographies',
+    'photos',
+    'nicknames',
+    'urls',
+    'userDefined',
+    'metadata',
+    'etag',
+    'resourceName',
   ]);
   const allKeys = new Set([...Object.keys(b), ...Object.keys(a)]);
   for (const key of allKeys) {
@@ -535,12 +590,26 @@ export function computeContactDiff(
         key,
         title: key.replace(/([A-Z])/g, ' $1').replace(/^./, (str) => str.toUpperCase()),
         icon: 'extension',
-        items: [{
-          type: !b[key] ? 'added' : !a[key] ? 'removed' : 'modified',
-          before: b[key] ? (typeof b[key] === 'object' ? JSON.stringify(b[key]) : String(b[key])) : undefined,
-          after: a[key] ? (typeof a[key] === 'object' ? JSON.stringify(a[key]) : String(a[key])) : undefined,
-          text: a[key] ? (typeof a[key] === 'object' ? JSON.stringify(a[key]) : String(a[key])) : '(removed)',
-        }],
+        items: [
+          {
+            type: !b[key] ? 'added' : !a[key] ? 'removed' : 'modified',
+            before: b[key]
+              ? typeof b[key] === 'object'
+                ? JSON.stringify(b[key])
+                : String(b[key])
+              : undefined,
+            after: a[key]
+              ? typeof a[key] === 'object'
+                ? JSON.stringify(a[key])
+                : String(a[key])
+              : undefined,
+            text: a[key]
+              ? typeof a[key] === 'object'
+                ? JSON.stringify(a[key])
+                : String(a[key])
+              : '(removed)',
+          },
+        ],
       });
     }
   }
@@ -565,14 +634,15 @@ function extractAllFieldsAsGroups(
   payload: Record<string, unknown> | null,
   labels: Map<string, string>,
   type: 'added' | 'removed',
-  birthdayFormat: BirthdayFormat = 'day-month-year'
+  birthdayFormat: BirthdayFormat = 'day-month-year',
 ): FieldDiffGroup[] {
   if (!payload) return [];
   const groups: FieldDiffGroup[] = [];
 
   // Names
   const names = (payload.names as Array<any>) || [];
-  const nameStr = names[0]?.displayName || [names[0]?.givenName, names[0]?.familyName].filter(Boolean).join(' ');
+  const nameStr =
+    names[0]?.displayName || [names[0]?.givenName, names[0]?.familyName].filter(Boolean).join(' ');
   if (nameStr) {
     groups.push({
       key: 'names',
@@ -677,6 +747,18 @@ function extractAllFieldsAsGroups(
       title: 'Notes',
       icon: 'description',
       items: [{ type, text: bios[0].value }],
+    });
+  }
+
+  // Photo
+  if (getPhotoUrl(payload)) {
+    groups.push({
+      key: 'photos',
+      title: 'Photo',
+      icon: 'image',
+      items: [
+        { type, text: type === 'added' ? 'Profile picture added' : 'Profile picture removed' },
+      ],
     });
   }
 

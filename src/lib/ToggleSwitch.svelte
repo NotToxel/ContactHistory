@@ -57,14 +57,18 @@
     border-radius: 9999px;
     cursor: pointer;
     flex-shrink: 0;
-    transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+      background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+      border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     outline: none;
     user-select: none;
     -webkit-user-select: none;
   }
 
   .toggle-switch:focus-visible {
-    box-shadow: 0 0 0 2px var(--surface-base), 0 0 0 4px var(--google-blue);
+    box-shadow:
+      0 0 0 2px var(--surface-base),
+      0 0 0 4px var(--google-blue);
   }
 
   .toggle-switch.checked {
@@ -92,15 +96,15 @@
     transform: translateX(20px);
   }
 
-  :root[data-theme="dark"] .toggle-switch {
+  :root[data-theme='dark'] .toggle-switch {
     background-color: #384352;
   }
 
-  :root[data-theme="dark"] .toggle-switch.checked {
+  :root[data-theme='dark'] .toggle-switch.checked {
     background-color: var(--google-blue);
   }
 
-  :root[data-theme="dark"] .toggle-thumb {
+  :root[data-theme='dark'] .toggle-thumb {
     background-color: #ffffff;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   }

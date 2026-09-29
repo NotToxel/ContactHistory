@@ -24,6 +24,35 @@
           >
             <span class="material-symbols-outlined">arrow_back</span>
           </button>
+          {#if app.sortedContacts.length > 1}
+            <div class="detail-stepper" role="group" aria-label="Contact navigation">
+              <button
+                type="button"
+                class="icon-btn stepper-btn"
+                disabled={!app.hasPreviousContact}
+                onclick={app.selectPreviousContact}
+                data-tooltip="Previous contact (Left arrow / J)"
+                data-tooltip-pos="bottom"
+                aria-label="Previous contact"
+              >
+                <span class="material-symbols-outlined">chevron_left</span>
+              </button>
+              <span class="stepper-counter"
+                >{app.detailIndex + 1} / {app.sortedContacts.length}</span
+              >
+              <button
+                type="button"
+                class="icon-btn stepper-btn"
+                disabled={!app.hasNextContact}
+                onclick={app.selectNextContact}
+                data-tooltip="Next contact (Right arrow / K)"
+                data-tooltip-pos="bottom"
+                aria-label="Next contact"
+              >
+                <span class="material-symbols-outlined">chevron_right</span>
+              </button>
+            </div>
+          {/if}
           <div class="detail-sticky-profile" class:visible={app.showStickyName}>
             <div
               class="detail-sticky-avatar"
@@ -98,6 +127,17 @@
             </button>
             {#if app.showDetailMenu}
               <div class="detail-menu" role="menu">
+                <button
+                  class="detail-menu-item"
+                  role="menuitem"
+                  onclick={() => {
+                    app.showDetailMenu = false;
+                    app.copyContactSummary(app.detail!);
+                  }}
+                >
+                  <span class="material-symbols-outlined">content_copy</span>
+                  <span>Copy contact summary</span>
+                </button>
                 <button
                   class="detail-menu-item"
                   role="menuitem"
@@ -362,15 +402,19 @@
             <!-- Chat -->
             <div class="action-circle-group">
               {#if hasEmail}
-                <a
-                  href="mailto:{primaryEmail}"
+                <button
+                  type="button"
                   class="action-circle-btn"
+                  onclick={() =>
+                    api.openExternalUrl(
+                      `https://chat.google.com/dm/${encodeURIComponent(primaryEmail)}`,
+                    )}
                   data-tooltip="Chat with {primaryEmail}"
                   data-tooltip-pos="top"
                   aria-label="Chat"
                 >
                   <span class="material-symbols-outlined">chat</span>
-                </a>
+                </button>
               {:else}
                 <div
                   class="action-circle-btn disabled"

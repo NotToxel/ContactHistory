@@ -411,6 +411,7 @@ fn publish_locked(
                 params![run_id, Utc::now().to_rfc3339()],
             )?;
             tx.commit()?;
+            let _ = db.execute_batch("PRAGMA wal_checkpoint(PASSIVE);");
             let prev_cap = db.query_row(
                 "SELECT sequence,started_at,committed_at,contact_count,group_count,media_complete FROM captures WHERE sequence=?1",
                 [prev_seq],
@@ -581,6 +582,7 @@ fn publish_locked(
             params![run_id, committed],
         )?;
         tx.commit()?;
+        let _ = db.execute_batch("PRAGMA wal_checkpoint(PASSIVE);");
         Ok(CaptureOutcome {
             capture: Capture {
                 sequence,

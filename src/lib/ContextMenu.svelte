@@ -1,6 +1,10 @@
 <script lang="ts">
   import { tick, onMount, onDestroy } from 'svelte';
-  import { contextMenuManager, closeContextMenu, type ContextMenuItem } from './context-menu.svelte';
+  import {
+    contextMenuManager,
+    closeContextMenu,
+    type ContextMenuItem,
+  } from './context-menu.svelte';
 
   const menu = $derived(contextMenuManager.state);
 
@@ -133,7 +137,10 @@
     role="menu"
     tabindex="-1"
     aria-orientation="vertical"
-    oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
+    oncontextmenu={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    }}
   >
     {#if menu.header}
       <div class="context-menu-header">
@@ -168,7 +175,9 @@
           tabindex={item.disabled ? -1 : 0}
         >
           {#if item.icon}
-            <span class="material-symbols-outlined context-menu-icon" aria-hidden="true">{item.icon}</span>
+            <span class="material-symbols-outlined context-menu-icon" aria-hidden="true"
+              >{item.icon}</span
+            >
           {:else}
             <span class="context-menu-icon-placeholder" aria-hidden="true"></span>
           {/if}
@@ -193,12 +202,21 @@
     color: var(--google-text, #202124);
     border: 1px solid var(--google-border, #dadce0);
     border-radius: 12px;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+    box-shadow:
+      0 8px 28px rgba(0, 0, 0, 0.18),
+      0 2px 6px rgba(0, 0, 0, 0.08);
     padding: 6px 0;
     user-select: none;
     outline: none;
     transform-origin: top left;
-    font-family: var(--font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+    font-family: var(
+      --font-family,
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      Roboto,
+      sans-serif
+    );
     animation: contextMenuPopIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -258,7 +276,9 @@
     text-align: left;
     font-size: 13px;
     color: var(--google-text, #202124);
-    transition: background-color 0.1s ease, color 0.1s ease;
+    transition:
+      background-color 0.1s ease,
+      color 0.1s ease;
     outline: none;
     font-family: inherit;
   }
@@ -317,19 +337,21 @@
     margin: 4px 0;
   }
 
-  :global(:root[data-theme="dark"]) .custom-context-menu {
+  :global(:root[data-theme='dark']) .custom-context-menu {
     background-color: var(--surface-base, #1e1e1e);
     color: var(--google-text, #e8eaed);
     border-color: var(--google-border, #3c4043);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.25);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.55),
+      0 2px 6px rgba(0, 0, 0, 0.25);
   }
 
-  :global(:root[data-theme="dark"]) .context-menu-item:hover:not(:disabled),
-  :global(:root[data-theme="dark"]) .context-menu-item.focused:not(:disabled) {
+  :global(:root[data-theme='dark']) .context-menu-item:hover:not(:disabled),
+  :global(:root[data-theme='dark']) .context-menu-item.focused:not(:disabled) {
     background-color: var(--google-surface-hover, #2d2e30);
   }
 
-  :global(:root[data-theme="dark"]) .context-menu-divider {
+  :global(:root[data-theme='dark']) .context-menu-divider {
     background: var(--google-border-subtle, #2d2e30);
   }
 </style>

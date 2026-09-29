@@ -7,6 +7,18 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 #[cfg(windows)]
 use std::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+fn scheduler_command() -> Command {
+    // schtasks is a console program. Prevent a console window from flashing
+    // when the desktop app checks or changes the schedule.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut command = Command::new("schtasks.exe");
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
 
 #[derive(Serialize)]
 pub struct DueStatus {
@@ -121,7 +133,7 @@ fn task_run() -> Result<String> {
 #[cfg(windows)]
 fn create_task(name: &str, schedule: &str, start: Option<&str>, days: Option<&str>) -> Result<()> {
     let run = task_run()?;
-    let mut command = Command::new("schtasks.exe");
+    let mut command = scheduler_command();
     command.args([
         "/create", "/tn", name, "/tr", &run, "/sc", schedule, "/it", "/f",
     ]);
@@ -192,7 +204,7 @@ pub fn install() -> Result<()> {
 #[cfg(windows)]
 pub fn uninstall() -> Result<()> {
     for name in [TASK_DAILY, TASK_LOGON] {
-        let output = Command::new("schtasks.exe")
+        let output = scheduler_command()
             .args(["/delete", "/tn", name, "/f"])
             .output()?;
         if !output.status.success() && task_exists(name) {
@@ -209,7 +221,7 @@ pub fn uninstall() -> Result<()> {
 
 #[cfg(windows)]
 fn task_exists(name: &str) -> bool {
-    Command::new("schtasks.exe")
+    scheduler_command()
         .args(["/query", "/tn", name])
         .output()
         .is_ok_and(|o| o.status.success())

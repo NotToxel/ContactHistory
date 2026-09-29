@@ -73,6 +73,7 @@ export class AppModel {
   downloadContactJson = actions_downloads.downloadContactJson.bind(this);
   downloadContactVcf = actions_downloads.downloadContactVcf.bind(this);
   downloadContactCsv = actions_downloads.downloadContactCsv.bind(this);
+  copyContactSummary = actions_downloads.copyContactSummary.bind(this);
   getPrimaryEmail = actions_contact_fields.getPrimaryEmail.bind(this);
   getAllEmails = actions_contact_fields.getAllEmails.bind(this);
   isFavourite = actions_contact_fields.isFavourite.bind(this);
@@ -137,6 +138,8 @@ export class AppModel {
   changeCapture = actions_contacts.changeCapture.bind(this);
   previewContactRevision = actions_contacts.previewContactRevision.bind(this);
   restoreContactRevision = actions_contacts.restoreContactRevision.bind(this);
+  selectPreviousContact = actions_contacts.selectPreviousContact.bind(this);
+  selectNextContact = actions_contacts.selectNextContact.bind(this);
   deleteSelectedSnapshot = actions_archive.deleteSelectedSnapshot.bind(this);
   resetAllDatabase = actions_archive.resetAllDatabase.bind(this);
   captureNow = actions_archive.captureNow.bind(this);
@@ -374,6 +377,16 @@ export class AppModel {
   otherContacts = $derived(selectors.otherContacts.call(this));
   detailLastEdited = $derived(this.getLastEditedInfo(this.detail, this.contactHistory));
   detailFirstSeen = $derived(this.getFirstSeenInfo(this.detail, this.contactHistory));
+  detailIndex = $derived(
+    this.detail
+      ? this.sortedContacts.findIndex((c) => c.resource_name === this.detail?.resource_name)
+      : -1,
+  );
+  hasPreviousContact = $derived(this.detailIndex > 0);
+  hasNextContact = $derived(
+    this.detailIndex >= 0 && this.detailIndex < this.sortedContacts.length - 1,
+  );
+  changesByResource = $derived(new Map(this.changes.map((c) => [c.resource_name, c])));
   filteredComparisonChanges = $derived(selectors.filteredComparisonChanges.call(this));
   comparisonStats = $derived(selectors.comparisonStats.call(this));
   filteredChangelog = $derived(selectors.filteredChangelog.call(this));

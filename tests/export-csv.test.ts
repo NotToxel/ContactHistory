@@ -70,9 +70,7 @@ describe('export-csv', () => {
           { value: 'jane.work@example.com', type: 'Work' },
           { value: 'jane.home@example.com', type: 'Home' },
         ],
-        phoneNumbers: [
-          { value: '+1-555-0100', type: 'Mobile' },
-        ],
+        phoneNumbers: [{ value: '+1-555-0100', type: 'Mobile' }],
         addresses: [
           {
             type: 'Work',
@@ -98,10 +96,14 @@ describe('export-csv', () => {
     expect(lines.length).toBeGreaterThanOrEqual(2);
 
     const header = lines[0];
-    expect(header).toContain('First Name,Middle Name,Last Name,Name Prefix,Name Suffix,Nickname,Birthday,Notes,Organisation name,Organisation title,Labels');
+    expect(header).toContain(
+      'First Name,Middle Name,Last Name,Name Prefix,Name Suffix,Nickname,Birthday,Notes,Organisation name,Organisation title,Labels',
+    );
     expect(header).toContain('Email 1 - Label,Email 1 - Value,Email 2 - Label,Email 2 - Value');
     expect(header).toContain('Phone 1 - Label,Phone 1 - Value');
-    expect(header).toContain('Address 1 - Label,Address 1 - Street,Address 1 - Extended address,Address 1 - City,Address 1 - Region,Address 1 - Postcode,Address 1 - Country,Address 1 - PO box');
+    expect(header).toContain(
+      'Address 1 - Label,Address 1 - Street,Address 1 - Extended address,Address 1 - City,Address 1 - Region,Address 1 - Postcode,Address 1 - Country,Address 1 - PO box',
+    );
 
     // Check data line
     expect(csv).toContain('Jane');

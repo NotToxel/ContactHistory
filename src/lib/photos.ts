@@ -11,7 +11,7 @@ export interface ContactPhotoItem {
 
 export function getProfilePhotoSourceEmail(
   payload: Record<string, unknown>,
-  photoObj?: any
+  photoObj?: any,
 ): string {
   if (!payload) return '';
   const emailAddresses = (payload.emailAddresses as Array<any>) || [];
@@ -51,7 +51,7 @@ export function getProfilePhotoSourceEmail(
 export function getContactPhotos(
   c: Contact,
   mediaList: MediaView[] = [],
-  avatarMap: Record<string, string> = {}
+  avatarMap: Record<string, string> = {},
 ): ContactPhotoItem[] {
   if (!c || !c.payload) return [];
   const payload = c.payload;

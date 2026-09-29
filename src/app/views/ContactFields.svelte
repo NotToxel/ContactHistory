@@ -12,47 +12,37 @@
       <div class="detail-card">
         <h2 class="card-title">Contact details</h2>
         <div class="field-list">
-          {#if app.getAllEmails(app.detail.payload).length === 0}
-            <div class="field-item">
-              <span class="material-symbols-outlined field-icon">mail</span>
+          {#each app.getAllEmails(app.detail.payload) as email, idx}
+            <div class="field-item" data-context="email" data-email-value={email.value}>
+              <!-- Show icon only on first email row; spacer on subsequent rows -->
+              {#if idx === 0}
+                <span class="material-symbols-outlined field-icon">mail</span>
+              {:else}
+                <span class="field-icon-spacer"></span>
+              {/if}
               <div class="field-content">
-                <span class="field-value field-placeholder">Add email</span>
-              </div>
-            </div>
-          {:else}
-            {#each app.getAllEmails(app.detail.payload) as email, idx}
-              <div class="field-item" data-context="email" data-email-value={email.value}>
-                <!-- Show icon only on first email row; spacer on subsequent rows -->
-                {#if idx === 0}
-                  <span class="material-symbols-outlined field-icon">mail</span>
-                {:else}
-                  <span class="field-icon-spacer"></span>
-                {/if}
-                <div class="field-content">
-                  <a href="mailto:{email.value}" class="field-value">{email.value}</a>
-                  <span class="field-meta">• {email.type}</span>
-                  <div class="field-actions">
-                    <button
-                      class="field-copy-btn"
-                      data-tooltip="Copy email"
-                      data-tooltip-pos="top"
-                      aria-label="Copy email"
-                      onclick={() => app.copyFieldValue(`email-${idx}`, email.value)}
-                    >
-                      <span class="material-symbols-outlined">content_copy</span>
-                    </button>
-                    {#if app.copiedFieldKey === `email-${idx}`}
-                      <div class="copy-popup-badge">
-                        <span class="material-symbols-outlined" style="font-size: 13px;">check</span
-                        >
-                        <span>Copied!</span>
-                      </div>
-                    {/if}
-                  </div>
+                <a href="mailto:{email.value}" class="field-value">{email.value}</a>
+                <span class="field-meta">• {email.type}</span>
+                <div class="field-actions">
+                  <button
+                    class="field-copy-btn"
+                    data-tooltip="Copy email"
+                    data-tooltip-pos="top"
+                    aria-label="Copy email"
+                    onclick={() => app.copyFieldValue(`email-${idx}`, email.value)}
+                  >
+                    <span class="material-symbols-outlined">content_copy</span>
+                  </button>
+                  {#if app.copiedFieldKey === `email-${idx}`}
+                    <div class="copy-popup-badge">
+                      <span class="material-symbols-outlined" style="font-size: 13px;">check</span>
+                      <span>Copied!</span>
+                    </div>
+                  {/if}
                 </div>
               </div>
-            {/each}
-          {/if}
+            </div>
+          {/each}
 
           {#each app.getAllPhones(app.detail.payload) as phone, idx}
             <div class="field-item" data-context="phone" data-phone-value={phone.value}>

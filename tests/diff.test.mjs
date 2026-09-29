@@ -20,8 +20,14 @@ test('cleanPayload strips noise fields and keeps data intact', () => {
 
 test('extractDisplayName returns highest quality name or fallback', () => {
   assert.equal(extractDisplayName({ names: [{ displayName: 'John Doe' }] }), 'John Doe');
-  assert.equal(extractDisplayName({ names: [{ givenName: 'John', familyName: 'Smith' }] }), 'John Smith');
-  assert.equal(extractDisplayName({ emailAddresses: [{ value: 'john@example.com' }] }), 'john@example.com');
+  assert.equal(
+    extractDisplayName({ names: [{ givenName: 'John', familyName: 'Smith' }] }),
+    'John Smith',
+  );
+  assert.equal(
+    extractDisplayName({ emailAddresses: [{ value: 'john@example.com' }] }),
+    'john@example.com',
+  );
   assert.equal(extractDisplayName(null), 'Unknown');
 });
 
@@ -110,17 +116,74 @@ test('computeContactDiff detects phone additions and updates', () => {
   assert.equal(phoneGroup.items[0].type, 'added');
 });
 
+test('photo changes compare the preferred contact photo rather than the first profile image', () => {
+  const profile = {
+    url: 'https://lh3.googleusercontent.com/a/profile',
+    metadata: { source: { type: 'PROFILE' } },
+  };
+  const before = {
+    photos: [
+      profile,
+      {
+        url: 'https://lh3.googleusercontent.com/contacts/old',
+        metadata: { source: { type: 'CONTACT' } },
+      },
+    ],
+  };
+  const after = {
+    photos: [
+      profile,
+      {
+        url: 'https://lh3.googleusercontent.com/contacts/new',
+        metadata: { source: { type: 'CONTACT' } },
+      },
+    ],
+  };
+  const diff = computeContactDiff(before, after);
+  assert.ok(diff.groups.some((group) => group.key === 'photos'));
+  assert.ok(diff.badges.some((badge) => badge.label === 'Photo updated'));
+});
+
+test('added and removed contacts include their photo in the change preview', () => {
+  const contact = { photos: [{ url: 'https://lh3.googleusercontent.com/contacts/photo' }] };
+  assert.ok(computeContactDiff(null, contact).groups.some((group) => group.key === 'photos'));
+  assert.ok(computeContactDiff(contact, null).groups.some((group) => group.key === 'photos'));
+});
+
 test('custom fields with duplicate keys are unchanged when reordered', () => {
-  const before = { userDefined: [{ key: 'Reference', value: 'one' }, { key: 'Reference', value: 'two' }] };
-  const after = { userDefined: [{ key: 'Reference', value: 'two' }, { key: 'Reference', value: 'one' }] };
+  const before = {
+    userDefined: [
+      { key: 'Reference', value: 'one' },
+      { key: 'Reference', value: 'two' },
+    ],
+  };
+  const after = {
+    userDefined: [
+      { key: 'Reference', value: 'two' },
+      { key: 'Reference', value: 'one' },
+    ],
+  };
   const diff = computeContactDiff(before, after);
   assert.equal(diff.hasChanges, false);
-  assert.equal(diff.groups.find((group) => group.key === 'userDefined'), undefined);
+  assert.equal(
+    diff.groups.find((group) => group.key === 'userDefined'),
+    undefined,
+  );
 });
 
 test('custom fields with duplicate keys preserve counts and report only actual changes', () => {
-  const before = { userDefined: [{ key: 'Reference', value: 'one' }, { key: 'Reference', value: 'one' }] };
-  const after = { userDefined: [{ key: 'Reference', value: 'one' }, { key: 'Reference', value: 'two' }] };
+  const before = {
+    userDefined: [
+      { key: 'Reference', value: 'one' },
+      { key: 'Reference', value: 'one' },
+    ],
+  };
+  const after = {
+    userDefined: [
+      { key: 'Reference', value: 'one' },
+      { key: 'Reference', value: 'two' },
+    ],
+  };
   const diff = computeContactDiff(before, after);
   const group = diff.groups.find((item) => item.key === 'userDefined');
   assert.deepEqual(group?.items, [
@@ -129,7 +192,12 @@ test('custom fields with duplicate keys preserve counts and report only actual c
 });
 
 test('custom fields with duplicate keys report a removed occurrence', () => {
-  const before = { userDefined: [{ key: 'Reference', value: 'one' }, { key: 'Reference', value: 'one' }] };
+  const before = {
+    userDefined: [
+      { key: 'Reference', value: 'one' },
+      { key: 'Reference', value: 'one' },
+    ],
+  };
   const after = { userDefined: [{ key: 'Reference', value: 'one' }] };
   const group = computeContactDiff(before, after).groups.find((item) => item.key === 'userDefined');
   assert.deepEqual(group?.items, [{ type: 'removed', label: 'Reference', text: 'one' }]);

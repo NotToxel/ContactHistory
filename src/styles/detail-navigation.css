@@ -71,6 +71,59 @@
   flex: 1;
 }
 
+/* Stepper to navigate Previous / Next contact */
+.detail-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background-color: var(--surface-variant, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--google-border);
+  border-radius: 18px;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--google-text-secondary);
+  flex-shrink: 0;
+}
+
+.detail-stepper .stepper-btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--google-text);
+  cursor: pointer;
+}
+
+.detail-stepper .stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+.detail-stepper .stepper-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.detail-stepper .stepper-counter {
+  padding: 0 4px;
+  user-select: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+:root[data-theme='dark'] .detail-stepper {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: var(--google-border);
+}
+
 /* Container for small contact avatar + name next to back button */
 .detail-sticky-profile {
   display: flex;

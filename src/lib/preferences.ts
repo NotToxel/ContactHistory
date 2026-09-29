@@ -20,13 +20,33 @@ export type Preferences = {
 const key = 'contact-history-preferences';
 
 const MONTHS_FULL = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 const MONTHS_SHORT = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 export interface BirthdayDateObj {
@@ -38,7 +58,7 @@ export interface BirthdayDateObj {
 export function formatBirthdayDate(
   date?: BirthdayDateObj | null,
   fallbackText?: string | null,
-  format: BirthdayFormat = 'day-month-year'
+  format: BirthdayFormat = 'day-month-year',
 ): string {
   if (!date || (!date.day && !date.month && !date.year)) {
     return fallbackText?.trim() || '';
@@ -52,8 +72,8 @@ export function formatBirthdayDate(
   const mm = month ? String(month).padStart(2, '0') : '';
   const yyyy = year ? String(year) : '';
 
-  const mName = (month && month >= 1 && month <= 12) ? MONTHS_FULL[month - 1] : '';
-  const mShort = (month && month >= 1 && month <= 12) ? MONTHS_SHORT[month - 1] : '';
+  const mName = month && month >= 1 && month <= 12 ? MONTHS_FULL[month - 1] : '';
+  const mShort = month && month >= 1 && month <= 12 ? MONTHS_SHORT[month - 1] : '';
 
   switch (format) {
     case 'month-day-year': {
@@ -126,8 +146,11 @@ export function readPreferences(): Preferences {
       theme: ['system', 'light', 'dark'].includes(value?.theme) ? value.theme : defaults.theme,
       density: value?.density === 'compact' ? 'compact' : defaults.density,
       reduceMotion: value?.reduceMotion === true,
-      defaultCountry: typeof value?.defaultCountry === 'string' ? value.defaultCountry : defaults.defaultCountry,
-      birthdayFormat: VALID_BIRTHDAY_FORMATS.has(value?.birthdayFormat) ? value.birthdayFormat : defaults.birthdayFormat,
+      defaultCountry:
+        typeof value?.defaultCountry === 'string' ? value.defaultCountry : defaults.defaultCountry,
+      birthdayFormat: VALID_BIRTHDAY_FORMATS.has(value?.birthdayFormat)
+        ? value.birthdayFormat
+        : defaults.birthdayFormat,
     };
   } catch {
     return defaults;

@@ -1,13 +1,37 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readPreferences, applyPreferences, savePreferences, formatBirthdayDate } from '../src/lib/preferences.ts';
+import {
+  readPreferences,
+  applyPreferences,
+  savePreferences,
+  formatBirthdayDate,
+} from '../src/lib/preferences.ts';
 
 test('preferences validate persisted values and tolerate unavailable storage', () => {
-  let stored = '{"theme":"dark","density":"compact","reduceMotion":true,"birthdayFormat":"month-day-year"}';
-  globalThis.localStorage = { getItem: () => stored, setItem: (_key, value) => { stored = value; } };
-  assert.deepEqual(readPreferences(), { theme: 'dark', density: 'compact', reduceMotion: true, defaultCountry: 'auto', birthdayFormat: 'month-day-year' });
-  stored = '{"theme":"invalid","density":null,"reduceMotion":"true","birthdayFormat":"invalid-format"}';
-  assert.deepEqual(readPreferences(), { theme: 'system', density: 'comfortable', reduceMotion: false, defaultCountry: 'auto', birthdayFormat: 'day-month-year' });
+  let stored =
+    '{"theme":"dark","density":"compact","reduceMotion":true,"birthdayFormat":"month-day-year"}';
+  globalThis.localStorage = {
+    getItem: () => stored,
+    setItem: (_key, value) => {
+      stored = value;
+    },
+  };
+  assert.deepEqual(readPreferences(), {
+    theme: 'dark',
+    density: 'compact',
+    reduceMotion: true,
+    defaultCountry: 'auto',
+    birthdayFormat: 'month-day-year',
+  });
+  stored =
+    '{"theme":"invalid","density":null,"reduceMotion":"true","birthdayFormat":"invalid-format"}';
+  assert.deepEqual(readPreferences(), {
+    theme: 'system',
+    density: 'comfortable',
+    reduceMotion: false,
+    defaultCountry: 'auto',
+    birthdayFormat: 'day-month-year',
+  });
   for (const value of ['null', '{broken']) {
     stored = value;
     assert.equal(readPreferences().theme, 'system');
@@ -15,7 +39,13 @@ test('preferences validate persisted values and tolerate unavailable storage', (
   globalThis.document = { documentElement: { dataset: {} } };
   let dark = true;
   globalThis.matchMedia = () => ({ matches: dark });
-  const settings = { theme: 'system', density: 'compact', reduceMotion: true, defaultCountry: 'auto', birthdayFormat: 'day-month-year' };
+  const settings = {
+    theme: 'system',
+    density: 'compact',
+    reduceMotion: true,
+    defaultCountry: 'auto',
+    birthdayFormat: 'day-month-year',
+  };
   applyPreferences(settings);
   assert.equal(document.documentElement.dataset.theme, 'dark');
   dark = false;
@@ -25,7 +55,9 @@ test('preferences validate persisted values and tolerate unavailable storage', (
   assert.equal(readPreferences().theme, 'dark');
   assert.equal(readPreferences().birthdayFormat, 'iso');
   assert.equal(document.documentElement.dataset.theme, 'dark');
-  localStorage.setItem = () => { throw Error('storage denied'); };
+  localStorage.setItem = () => {
+    throw Error('storage denied');
+  };
   assert.equal(savePreferences(settings), false);
   assert.equal(document.documentElement.dataset.theme, 'light');
   assert.equal(document.documentElement.dataset.density, 'compact');
