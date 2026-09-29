@@ -67,3 +67,8 @@ contact-history.exe export <account-uuid> <sequence> vcf C:\Backups\contacts.vcf
 ## Current validation limits
 
 The Rust fixture tests and frontend production build pass on Windows. A live Google OAuth account and disposable import target were not available, so OAuth consent, current Google CSV import, and vCard importer round trips have not been tested end to end. The contact table has configurable columns but is not virtualized. The release installer is unsigned. Other Contacts and Workspace directory datasets are outside the archive source.
+
+## License
+
+This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+

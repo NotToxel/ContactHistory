@@ -2,6 +2,7 @@
 name = "contact-history"
 version = "0.3.2"
 edition = "2021"
+license = "AGPL-3.0-only"
 
 [lib]
 name = "contact_history"

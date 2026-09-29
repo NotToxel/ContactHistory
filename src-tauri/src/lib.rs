@@ -449,6 +449,53 @@ fn open_external_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_storage_dir(account_id: Option<String>) -> Result<(), String> {
+    let root = core::storage::default_root().map_err(|e| e.to_string())?;
+    let path = if let Some(ref id) = account_id {
+        if !id.trim().is_empty() {
+            if let Ok(store) = store() {
+                if let Ok(account) = store.account(id) {
+                    store.account_dir(&account.id).unwrap_or_else(|_| root.clone())
+                } else {
+                    root.clone()
+                }
+            } else {
+                root.clone()
+            }
+        } else {
+            root
+        }
+    } else {
+        root
+    };
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    open::that(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_storage_path(account_id: Option<String>) -> Result<String, String> {
+    let root = core::storage::default_root().map_err(|e| e.to_string())?;
+    let path = if let Some(ref id) = account_id {
+        if !id.trim().is_empty() {
+            if let Ok(store) = store() {
+                if let Ok(account) = store.account(id) {
+                    store.account_dir(&account.id).unwrap_or_else(|_| root.clone())
+                } else {
+                    root.clone()
+                }
+            } else {
+                root.clone()
+            }
+        } else {
+            root
+        }
+    } else {
+        root
+    };
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 fn win_minimize(window: tauri::Window) -> Result<(), String> {
     window.minimize().map_err(|e| e.to_string())
 }
@@ -517,6 +564,8 @@ pub fn run() {
             backup_account,
             restore_archive,
             open_external_url,
+            open_storage_dir,
+            get_storage_path,
             win_minimize,
             win_toggle_maximize,
             win_close,

@@ -465,8 +465,64 @@
   gap: 12px;
 }
 
+.about-storage-meta-row {
+  align-items: flex-start;
+}
+
+.about-storage-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.about-path-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: var(--google-text-secondary);
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.about-storage-btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.about-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  background-color: var(--google-surface);
+  border: 1px solid var(--google-border);
+  color: var(--google-text);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.about-mini-btn:hover {
+  background-color: var(--google-surface-hover);
+  border-color: var(--control-border);
+  color: var(--google-blue);
+}
+
+.about-mini-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
 .about-meta-label {
   color: var(--google-text-secondary);
+  flex-shrink: 0;
 }
 
 .about-meta-value {

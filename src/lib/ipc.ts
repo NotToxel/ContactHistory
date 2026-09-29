@@ -167,6 +167,8 @@ export const api = {
     invoke<void>('backup_account', { accountId, destination }),
   restoreArchive: (source: string) => invoke<Account>('restore_archive', { source }),
   openExternalUrl: (url: string) => invoke<void>('open_external_url', { url }),
+  openStorageDir: (accountId?: string) => invoke<void>('open_storage_dir', { accountId }),
+  getStoragePath: (accountId?: string) => invoke<string>('get_storage_path', { accountId }),
   winMinimize: () => invoke<void>('win_minimize'),
   winToggleMaximize: () => invoke<boolean>('win_toggle_maximize'),
   winClose: () => invoke<void>('win_close'),

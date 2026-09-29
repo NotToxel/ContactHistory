@@ -117,28 +117,33 @@
         <div class="oauth-help-content">
           <ol class="oauth-help-steps">
             <li>
-              In Google Cloud Console, enable the <strong>Google People API</strong> and configure an <strong>OAuth consent screen</strong>.
+              In Google Cloud Console, enable the <strong>Google People API</strong> and configure
+              an <strong>OAuth consent screen</strong>.
             </li>
             <li>
               Go to
               <button
                 type="button"
                 class="inline-link-btn"
-                onclick={() => api.openExternalUrl('https://console.cloud.google.com/apis/credentials')}
+                onclick={() =>
+                  api.openExternalUrl('https://console.cloud.google.com/apis/credentials')}
               >
                 Google Cloud Credentials
               </button>
               and click <strong>Create Credentials &rarr; OAuth client ID</strong>.
             </li>
             <li>
-              Choose Application type <strong>Desktop app</strong>, then click <strong>Create</strong>.
+              Choose Application type <strong>Desktop app</strong>, then click
+              <strong>Create</strong>.
             </li>
             <li>
-              Copy the resulting <strong>Client ID</strong> and <strong>Client Secret</strong> into the fields below.
+              Copy the resulting <strong>Client ID</strong> and <strong>Client Secret</strong> into the
+              fields below.
             </li>
           </ol>
           <div class="oauth-help-note">
-            The app requests read-only permissions (<code>openid</code>, <code>email</code>, <code>contacts.readonly</code>) using standard PKCE and local loopback.
+            The app requests read-only permissions (<code>openid</code>, <code>email</code>,
+            <code>contacts.readonly</code>) using standard PKCE and local loopback.
           </div>
         </div>
       </details>

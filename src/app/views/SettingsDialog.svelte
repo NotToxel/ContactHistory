@@ -8,6 +8,19 @@
 
   import type { AppModel } from '../model.svelte';
   let { app }: { app: AppModel } = $props();
+
+  let storagePath = $state('');
+
+  $effect(() => {
+    if (app.showSettingsModal && app.settingsTab === 'about') {
+      api
+        .getStoragePath()
+        .then((path) => {
+          storagePath = path;
+        })
+        .catch(() => {});
+    }
+  });
 </script>
 
 {#if app.showSettingsModal}
@@ -461,6 +474,15 @@
                   <span class="material-symbols-outlined about-btn-icon">bug_report</span>
                   <span>Report an Issue</span>
                 </button>
+                <button
+                  type="button"
+                  class="about-link-btn"
+                  onclick={() => api.openStorageDir()}
+                  title="Open local storage directory in File Explorer"
+                >
+                  <span class="material-symbols-outlined about-btn-icon">folder_open</span>
+                  <span>Storage Folder</span>
+                </button>
               </div>
             </div>
 
@@ -508,9 +530,39 @@
             </div>
 
             <div class="about-meta-card">
-              <div class="about-meta-row">
+              <div class="about-meta-row about-storage-meta-row">
                 <span class="about-meta-label">Storage Location</span>
-                <span class="about-meta-value">%APPDATA%\ContactHistory</span>
+                <div class="about-storage-controls">
+                  <span
+                    class="about-meta-value about-path-value"
+                    title={storagePath || '%APPDATA%\\ContactHistory'}
+                  >
+                    {storagePath || '%APPDATA%\\ContactHistory'}
+                  </span>
+                  <div class="about-storage-btn-group">
+                    <button
+                      type="button"
+                      class="about-mini-btn"
+                      onclick={() => api.openStorageDir()}
+                      title="Open Contact History storage directory in File Explorer"
+                    >
+                      <span class="material-symbols-outlined about-mini-icon">folder_open</span>
+                      <span>Open Folder</span>
+                    </button>
+                    {#if app.selected}
+                      <button
+                        type="button"
+                        class="about-mini-btn"
+                        onclick={() => api.openStorageDir(app.selected?.id)}
+                        title="Open active account database & photos folder in File Explorer"
+                      >
+                        <span class="material-symbols-outlined about-mini-icon">folder_special</span
+                        >
+                        <span>Account Data</span>
+                      </button>
+                    {/if}
+                  </div>
+                </div>
               </div>
               <div class="about-meta-row">
                 <span class="about-meta-label">Built With</span>
@@ -518,7 +570,7 @@
               </div>
               <div class="about-meta-row">
                 <span class="about-meta-label">Author & License</span>
-                <span class="about-meta-value">NotToxel • MIT License</span>
+                <span class="about-meta-value">NotToxel • AGPL-3.0 License</span>
               </div>
             </div>
           </section>
