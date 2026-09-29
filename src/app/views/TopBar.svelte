@@ -169,21 +169,35 @@
   <!-- Topbar Actions & Window Controls -->
   <div class="topbar-right">
     {#if app.captures.length > 0 && app.capture}
+      {@const isArchived = app.capture.sequence !== app.captures[0]?.sequence}
       <div class="snapshot-dropdown-container">
         <button
           class="snapshot-chip"
+          class:archived={isArchived}
           class:active={app.showSnapshotDropdown}
           onclick={() => {
             app.showSnapshotDropdown = !app.showSnapshotDropdown;
             app.showAccountMenu = false;
           }}
-          data-tooltip="Snapshot timeline"
+          data-tooltip={isArchived
+            ? `Archived view: Snapshot #${app.capture.sequence} (${app.formatCaptureTime(app.capture.committed_at)})`
+            : `Snapshot #${app.capture.sequence} (${app.formatCaptureTime(app.capture.committed_at)})`}
           aria-haspopup="true"
           aria-expanded={app.showSnapshotDropdown}
         >
-          <span class="material-symbols-outlined">history</span>
-          <span>Snapshot #{app.capture.sequence}</span>
-          <span class="material-symbols-outlined" style="font-size: 16px;">
+          <span class="material-symbols-outlined snapshot-chip-icon">
+            {isArchived ? 'history_toggle_off' : 'history'}
+          </span>
+          <span class="snapshot-chip-body">
+            <span class="snapshot-chip-title">Snapshot #{app.capture.sequence}</span>
+            <span class="snapshot-chip-date"
+              >&bull; {app.formatCaptureTime(app.capture.committed_at)}</span
+            >
+          </span>
+          {#if isArchived}
+            <span class="snapshot-archived-badge">Archived view</span>
+          {/if}
+          <span class="material-symbols-outlined snapshot-chip-arrow" style="font-size: 16px;">
             {app.showSnapshotDropdown ? 'arrow_drop_up' : 'arrow_drop_down'}
           </span>
         </button>

@@ -15,7 +15,7 @@
   background-color: var(--google-surface);
   border: 1px solid var(--google-border);
   border-radius: 18px;
-  padding: 6px 14px;
+  padding: 5px 12px;
   font-size: 13px;
   font-weight: 500;
   color: var(--google-text);
@@ -33,6 +33,60 @@
 .snapshot-chip .material-symbols-outlined {
   font-size: 18px;
   color: var(--google-blue);
+}
+
+.snapshot-chip.archived {
+  background-color: rgba(234, 134, 0, 0.06);
+  border-color: rgba(234, 134, 0, 0.35);
+}
+
+.snapshot-chip.archived:hover {
+  background-color: rgba(234, 134, 0, 0.12);
+  border-color: rgba(234, 134, 0, 0.5);
+}
+
+.snapshot-chip.archived .snapshot-chip-icon {
+  color: #d97706;
+}
+
+:root[data-theme='dark'] .snapshot-chip.archived .snapshot-chip-icon {
+  color: #f6c768;
+}
+
+.snapshot-chip-body {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.snapshot-chip-title {
+  white-space: nowrap;
+}
+
+.snapshot-chip-date {
+  font-size: 11px;
+  color: var(--google-text-secondary);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.snapshot-archived-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #b45309;
+  background-color: rgba(234, 134, 0, 0.12);
+  border: 1px solid rgba(234, 134, 0, 0.28);
+  padding: 1px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+:root[data-theme='dark'] .snapshot-archived-badge {
+  color: #f6c768;
+  background-color: rgba(246, 199, 104, 0.15);
+  border-color: rgba(246, 199, 104, 0.35);
 }
 
 .snapshot-dropdown-container {

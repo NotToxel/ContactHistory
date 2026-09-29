@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { api } from '../../lib/ipc';
   import type { AppModel } from '../model.svelte';
   let { app }: { app: AppModel } = $props();
 </script>
@@ -106,6 +107,41 @@
         Connect your Google Account using your OAuth Client credentials to begin archiving contacts
         and tracking revisions over time.
       </p>
+
+      <details class="oauth-help-disclosure">
+        <summary class="oauth-help-summary">
+          <span class="material-symbols-outlined oauth-help-icon">help_outline</span>
+          <span>Where do I find these?</span>
+          <span class="material-symbols-outlined oauth-help-chevron">expand_more</span>
+        </summary>
+        <div class="oauth-help-content">
+          <ol class="oauth-help-steps">
+            <li>
+              In Google Cloud Console, enable the <strong>Google People API</strong> and configure an <strong>OAuth consent screen</strong>.
+            </li>
+            <li>
+              Go to
+              <button
+                type="button"
+                class="inline-link-btn"
+                onclick={() => api.openExternalUrl('https://console.cloud.google.com/apis/credentials')}
+              >
+                Google Cloud Credentials
+              </button>
+              and click <strong>Create Credentials &rarr; OAuth client ID</strong>.
+            </li>
+            <li>
+              Choose Application type <strong>Desktop app</strong>, then click <strong>Create</strong>.
+            </li>
+            <li>
+              Copy the resulting <strong>Client ID</strong> and <strong>Client Secret</strong> into the fields below.
+            </li>
+          </ol>
+          <div class="oauth-help-note">
+            The app requests read-only permissions (<code>openid</code>, <code>email</code>, <code>contacts.readonly</code>) using standard PKCE and local loopback.
+          </div>
+        </div>
+      </details>
 
       <div class="onboarding-form">
         <div>

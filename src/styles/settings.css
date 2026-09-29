@@ -384,12 +384,13 @@
 
 .about-link-btn.primary {
   background-color: var(--google-blue);
-  color: #ffffff;
+  color: var(--on-accent);
   border-color: var(--google-blue);
 }
 
 .about-link-btn.primary:hover {
-  background-color: #1967d2;
+  background-color: var(--google-blue-hover);
+  border-color: var(--google-blue-hover);
 }
 
 .about-btn-icon {

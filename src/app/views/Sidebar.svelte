@@ -57,7 +57,7 @@
     </button>
   </div>
 
-  <!-- Fix and Manage / Archive Section -->
+  <!-- Fix and Manage Section -->
   <div class="sidebar-section">
     <div class="sidebar-section-header">Fix and manage</div>
     <MissingFieldsFilter
@@ -91,6 +91,11 @@
       <span class="material-symbols-outlined nav-icon">photo_library</span>
       <span class="nav-label">Export Photos</span>
     </button>
+  </div>
+
+  <!-- Archive Section -->
+  <div class="sidebar-section">
+    <div class="sidebar-section-header">Archive</div>
     <button
       class="nav-item"
       onclick={app.backupSelected}

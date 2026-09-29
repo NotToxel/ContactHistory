@@ -4,6 +4,22 @@
 
   import type { AppModel } from '../model.svelte';
   let { app }: { app: AppModel } = $props();
+
+  let showCustomSelectors = $state(false);
+
+  const priorSnapshotSeq = $derived(
+    app.compareTargetSeq !== null
+      ? (app.captures.find((c) => c.sequence < app.compareTargetSeq!)?.sequence ?? null)
+      : null,
+  );
+
+  const isComparingPrevious = $derived(
+    app.compareTargetSeq !== null &&
+      app.compareBaseSeq !== null &&
+      (priorSnapshotSeq !== null
+        ? app.compareBaseSeq === priorSnapshotSeq
+        : app.compareBaseSeq === app.compareTargetSeq),
+  );
 </script>
 
 <!-- Changes & Changelog View -->
@@ -61,71 +77,149 @@
   {#if app.changesTab === 'comparison'}
     <!-- TAB 1: SNAPSHOT COMPARISON -->
     {#if app.captures.length > 1}
-      <div class="comparison-bar">
-        <SnapshotSelect
-          label="Base snapshot"
-          captures={app.captures}
-          value={app.compareBaseSeq}
-          onchange={(value) => {
-            app.compareBaseSeq = value;
-            app.refreshChangesComparison();
-            app.recordNavigation();
-          }}
-        />
+      <div class="comparison-bar-card">
+        <div class="comparison-default-bar">
+          <div class="comparison-current-state">
+            <span class="material-symbols-outlined comparison-icon">
+              {isComparingPrevious ? 'update' : 'compare_arrows'}
+            </span>
+            <div class="comparison-state-text">
+              <div class="comparison-state-title">
+                {#if isComparingPrevious}
+                  {#if priorSnapshotSeq !== null}
+                    Comparing Snapshot #{app.compareTargetSeq} with previous (Snapshot #{app.compareBaseSeq})
+                  {:else}
+                    Viewing baseline Snapshot #{app.compareTargetSeq}
+                  {/if}
+                {:else}
+                  Custom comparison: Snapshot #{app.compareBaseSeq} &rarr; #{app.compareTargetSeq}
+                {/if}
+              </div>
+              <div class="comparison-state-subtitle">
+                {#if isComparingPrevious}
+                  Default comparison showing contact changes since previous capture
+                {:else}
+                  Comparing differences across selected snapshot range
+                {/if}
+              </div>
+            </div>
+          </div>
 
-        <button
-          type="button"
-          class="compare-swap-btn"
-          title="Swap base and target snapshots"
-          aria-label="Swap snapshots"
-          onclick={app.swapComparisonSnapshots}
-        >
-          <span class="material-symbols-outlined">swap_horiz</span>
-        </button>
+          <div class="comparison-actions">
+            {#if !isComparingPrevious}
+              <button
+                type="button"
+                class="comparison-action-btn"
+                onclick={() => {
+                  if (app.capture) {
+                    const curSeq = app.capture.sequence;
+                    app.compareTargetSeq = curSeq;
+                    const prior = app.captures.find((c) => c.sequence < curSeq);
+                    app.compareBaseSeq = prior ? prior.sequence : curSeq;
+                    app.refreshChangesComparison();
+                    app.recordNavigation();
+                    showCustomSelectors = false;
+                  }
+                }}
+              >
+                <span class="material-symbols-outlined" style="font-size: 16px;">history</span>
+                <span>Compare with previous</span>
+              </button>
+            {/if}
 
-        <SnapshotSelect
-          label="Compare with"
-          captures={app.captures}
-          value={app.compareTargetSeq}
-          onchange={(value) => {
-            app.compareTargetSeq = value;
-            app.refreshChangesComparison();
-            app.recordNavigation();
-          }}
-        />
-
-        <div class="compare-presets" role="group" aria-label="Comparison shortcuts">
-          <button
-            type="button"
-            class="compare-quick-btn"
-            onclick={() => {
-              if (app.capture) {
-                const curSeq = app.capture.sequence;
-                app.compareTargetSeq = curSeq;
-                const prior = app.captures.find((c) => c.sequence < curSeq);
-                app.compareBaseSeq = prior ? prior.sequence : curSeq;
-                app.refreshChangesComparison();
-                app.recordNavigation();
-              }
-            }}
-          >
-            Compare with previous
-          </button>
-          <button
-            type="button"
-            class="compare-quick-btn"
-            onclick={() => {
-              if (app.captures.length >= 2) {
-                app.compareBaseSeq = app.captures[app.captures.length - 1].sequence;
-                app.compareTargetSeq = app.captures[0].sequence;
-                app.refreshChangesComparison();
-                app.recordNavigation();
-              }
-            }}
-          >
-            Earliest vs Latest
-          </button>
+            <button
+              type="button"
+              class="comparison-action-btn"
+              class:active={showCustomSelectors || !isComparingPrevious}
+              onclick={() => {
+                showCustomSelectors = !showCustomSelectors;
+              }}
+              aria-expanded={showCustomSelectors || !isComparingPrevious}
+            >
+              <span class="material-symbols-outlined" style="font-size: 16px;">tune</span>
+              <span
+                >{showCustomSelectors || !isComparingPrevious
+                  ? 'Hide custom snapshots'
+                  : 'Choose custom snapshots'}</span
+              >
+              <span class="material-symbols-outlined" style="font-size: 18px;">
+                {showCustomSelectors || !isComparingPrevious ? 'expand_less' : 'expand_more'}
+              </span>
+            </button>
+          </div>
         </div>
+
+        {#if showCustomSelectors || !isComparingPrevious}
+          <div class="comparison-custom-drawer">
+            <div class="comparison-bar">
+              <SnapshotSelect
+                label="Base snapshot"
+                captures={app.captures}
+                value={app.compareBaseSeq}
+                onchange={(value) => {
+                  app.compareBaseSeq = value;
+                  app.refreshChangesComparison();
+                  app.recordNavigation();
+                }}
+              />
+
+              <button
+                type="button"
+                class="compare-swap-btn"
+                title="Swap base and target snapshots"
+                aria-label="Swap snapshots"
+                onclick={app.swapComparisonSnapshots}
+              >
+                <span class="material-symbols-outlined">swap_horiz</span>
+              </button>
+
+              <SnapshotSelect
+                label="Compare with"
+                captures={app.captures}
+                value={app.compareTargetSeq}
+                onchange={(value) => {
+                  app.compareTargetSeq = value;
+                  app.refreshChangesComparison();
+                  app.recordNavigation();
+                }}
+              />
+
+              <div class="compare-presets" role="group" aria-label="Comparison shortcuts">
+                <button
+                  type="button"
+                  class="compare-quick-btn"
+                  class:active={isComparingPrevious}
+                  onclick={() => {
+                    if (app.capture) {
+                      const curSeq = app.capture.sequence;
+                      app.compareTargetSeq = curSeq;
+                      const prior = app.captures.find((c) => c.sequence < curSeq);
+                      app.compareBaseSeq = prior ? prior.sequence : curSeq;
+                      app.refreshChangesComparison();
+                      app.recordNavigation();
+                    }
+                  }}
+                >
+                  Compare with previous
+                </button>
+                <button
+                  type="button"
+                  class="compare-quick-btn"
+                  onclick={() => {
+                    if (app.captures.length >= 2) {
+                      app.compareBaseSeq = app.captures[app.captures.length - 1].sequence;
+                      app.compareTargetSeq = app.captures[0].sequence;
+                      app.refreshChangesComparison();
+                      app.recordNavigation();
+                    }
+                  }}
+                >
+                  Earliest vs Latest
+                </button>
+              </div>
+            </div>
+          </div>
+        {/if}
       </div>
     {/if}
 
