@@ -7,7 +7,9 @@
 [![Runtime: Bun](https://img.shields.io/badge/Runtime-Bun-fbf0df?style=flat-square&logo=bun&logoColor=black)](https://bun.sh)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blueviolet?style=flat-square)](LICENSE)
 
-A Windows-first, offline-first desktop archive and visual diff utility for Google Contacts. Contact History continuously captures point-in-time snapshots, detects field-by-field modifications, archives original high-resolution photo bytes, provides forensic rollback comparison, and exports to standard formats—without ever requesting write permissions to your Google account.
+**Never lose a contact, photo, or revision again.**
+
+**Contact History** is a Windows-first, offline-first desktop utility that turns your Google Contacts into a **version-controlled personal archive**. It continuously captures point-in-time snapshots, detects exact field-level modifications, archives original high-resolution photo bytes, provides side-by-side forensic comparisons, and enables portable exports—**operating strictly with read-only permissions and zero cloud telemetry**.
 
 ---
 
@@ -51,71 +53,25 @@ A Windows-first, offline-first desktop archive and visual diff utility for Googl
 
 ## Why Contact History?
 
-Google Contacts provides cloud synchronization across mobile devices and the web, but it lacks revision history, point-in-time snapshots, and audit trails. When contacts are accidentally edited, merged incorrectly, truncated by third-party sync apps, or silently deleted, Google offers only a blunt "Undo changes" feature limited to 30 days that rewrites your entire contact database.
+Google Contacts syncs in real-time, but it provides **no revision history, point-in-time snapshots, or audit trails**. When contacts are silently deleted, overwritten by third-party sync apps, or merged incorrectly, Google offers only a blunt 30-day "Undo" that rewrites your entire address book.
 
-**Contact History** solves this:
-- **Immutable Snapshots**: Captures complete historical states in an isolated SQLite database per account.
-- **Granular Visual Diffing**: Shows exactly which fields changed (phone numbers, emails, addresses, job titles, photos, notes) between any two arbitrary captures.
-- **True Read-Only Peace of Mind**: Connects strictly with `contacts.readonly` scope using OAuth 2.0 PKCE. It is technically impossible for the application to modify or delete contacts on Google's servers.
-- **Offline First**: All data lives on your PC under `%APPDATA%\ContactHistory`. Full search, browsing, diffing, and export work without an internet connection.
-- **Media Preservation**: Fetches and stores exact original photo bytes with automatic retry and SHA-256 deduplication.
+**Contact History gives you total control:**
+- **Immutable History**: Every capture is permanently preserved in a local SQLite database per account.
+- **Forensic Diffs**: Pinpoints exactly what changed—phone numbers, emails, addresses, job titles, photos, notes—between any two captures.
+- **100% Read-Only Safety**: Uses OAuth 2.0 PKCE with `contacts.readonly`. It is technically impossible for the application to modify or delete contacts on Google.
+- **Offline First**: All data, search indexing, diffs, and exports function entirely offline under `%APPDATA%\ContactHistory`.
 
 ---
 
 ## Key Features
 
-### 🛡️ Read-Only Security & Credential Isolation
-- Uses Google OAuth 2.0 with PKCE and a local loopback callback.
-- Scopes requested: `openid`, `email`, and `contacts.readonly`. Never requests contact-write scopes.
-- Refresh tokens are encrypted and held in Windows Credential Manager via the native `keyring` crate.
-- Account databases and configuration are stored locally with zero remote telemetry.
-
-### ⏱️ Snapshot & Delta Capture Engine
-- Efficient initial scan followed by Google People API sync-token delta updates.
-- Captures contacts, user groups, system labels, birthdays, relations, addresses, and user-defined custom fields.
-- Snapshot sequences allow time-traveling back to any previously captured date.
-- Delete or manage individual snapshots while preserving remaining historical revisions.
-
-### 🔍 Forensic Change Detection & Visual Diffs
-- Field-level diff engine categorizes additions (green), modifications (amber), and deletions (red).
-- Visual pill badges highlight modified phone numbers, emails, jobs, birthdays, notes, and avatars.
-- Expandable change cards reveal granular before/after diffs with JSON patch export for auditing.
-- Compare any two arbitrary snapshots (e.g. Earliest vs. Latest, or custom revision pairs).
-
-### 🗃️ Flexible Data Management & Productivity
-- **Customizable Columns**: Reorder and toggle table columns (Name, Email, Phone, Birthday, Organization, Job Title, Labels, Addresses).
-- **Missing Fields Auditor**: Instantly filter contacts lacking photos, birthdays, phone numbers, or email addresses.
-- **International Phone Formatting**: Integrated `libphonenumber-js` formatting and system locale detection.
-- **Fast Search**: Typo-tolerant, accent-insensitive search across names, emails, phones, notes, and company names.
-- **Print & PDF Generation**: Clean printable directory views filtered by label or selection.
-
-### 📦 Export & Portability
-- **Google CSV**: Export capture state directly into RFC 4180 Google Contacts CSV format for easy migration.
-- **vCard 3.0**: Standard `.vcf` export with embedded photos and UTF-8 multi-field encoding.
-- **Batch Photo Export**: Extract high-resolution contact photos to a directory or a standalone `.zip` archive.
-- **`.contacthistory` Archive Backup & Restore**: Self-contained container backups with SQLite database, media files, and SHA-256 manifest validation.
-
-### ⏰ Automated Background Sync
-- Optional integration with **Windows Task Scheduler** for daily and logon capture checks.
-- Headless CLI mode (`capture --due`) checks elapsed time (7-day default interval) and syncs in the background without UI overhead.
-
----
-
-## Reusable Screenshot Generation
-
-Contact History includes an automated screenshot pipeline that launches a headless browser, initializes a mock snapshot environment with rich historical data, navigates through all key views, and captures production-ready assets:
-
-```powershell
-bun run screenshots
-```
-
-The script (`scripts/generate-screenshots.ts`):
-1. Compiles the frontend assets into `dist/`.
-2. Spins up a native Bun static web server.
-3. Launches Microsoft Edge (or Google Chrome) in headless mode via Chrome DevTools Protocol (CDP).
-4. Injects realistic mock data (contacts, snapshots, changes, avatars, and labels).
-5. Automatically cycles through light mode, contact details, expanded diffs, settings dialogs, column customizer, dark mode, and onboarding.
-6. Saves timestamped, optimized PNGs into `docs/screenshots/`.
+- **🔒 True Read-Only Security** — Connects via OAuth 2.0 PKCE (`contacts.readonly`). Refresh tokens are encrypted in Windows Credential Manager. Zero external telemetry.
+- **⏱️ Point-in-Time Snapshots** — Full initial scan followed by delta syncs. Time-travel to any historical capture sequence.
+- **🔍 Granular Visual Diffing** — Highlights additions (green), modifications (amber), and deletions (red) with side-by-side field diffs and JSON patch exports.
+- **🖼️ Exact Photo Preservation** — Retrieves, deduplicates (SHA-256), and stores full-resolution contact photo bytes locally.
+- **📋 Customizable Workspace** — Reorderable table columns, missing-field auditing, international phone formatting (`libphonenumber-js`), and typo-tolerant search.
+- **📦 Universal Export & Backup** — Export any snapshot to Google CSV, vCard 3.0 (with embedded photos), batch photo ZIPs, or self-contained `.contacthistory` archives.
+- **⏰ Background Automation** — Headless CLI mode (`capture --due`) with optional Windows Task Scheduler integration for automatic periodic backups.
 
 ---
 
@@ -124,7 +80,7 @@ The script (`scripts/generate-screenshots.ts`):
 ### Prerequisites
 - [Bun](https://bun.sh) (v1.1+)
 - [Rust & Cargo](https://www.rust-lang.org) (MSVC toolchain)
-- Windows 10/11 with WebView2 Runtime (pre-installed on modern Windows)
+- Windows 10/11 with WebView2 Runtime
 
 > [!IMPORTANT]
 > This project strictly uses **Bun**. Do not use npm, npx, yarn, or pnpm.
@@ -226,10 +182,6 @@ bun run native import-fixture tests\fixtures\capture-2.json fixture-demo demo@ex
 > - The application does **NOT** transmit telemetry, error reports, or contact records to any third-party server or developer endpoint.
 > - The application operates strictly with **read-only** Google API permissions (`contacts.readonly`). It does not have technical permission to create, edit, or delete contacts in your Google account.
 > - Users are solely responsible for protecting their local backup files (`.contacthistory`) and safeguarding their device access.
-
-### Software Warranty & As-Is Notice
-> [!CAUTION]
-> This software is provided by the copyright holders and contributors "AS IS" and any express or implied warranties, including, but not limited to, the implied warranties of merchantability and fitness for a particular purpose are disclaimed. In no event shall the authors or contributors be liable for any direct, indirect, incidental, special, exemplary, or consequential damages arising in any way out of the use of this software (as stated in Section 15 and 16 of the GNU Affero General Public License v3.0).
 
 ---
 
