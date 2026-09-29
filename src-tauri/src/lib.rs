@@ -525,6 +525,16 @@ fn win_is_maximized(window: tauri::Window) -> Result<bool, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            use tauri::Manager;
+            for window in app.webview_windows().values() {
+                let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize {
+                    width: 800.0,
+                    height: 560.0,
+                })));
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_accounts,
             connect_google,

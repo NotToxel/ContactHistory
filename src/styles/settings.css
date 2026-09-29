@@ -594,7 +594,7 @@
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
-@media (min-width: 761px) {
+@media (min-width: 1001px) {
   .app-title {
     display: inline;
   }

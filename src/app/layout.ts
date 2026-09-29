@@ -28,6 +28,13 @@ export const SIDEBAR = {
   viewportRatio: 0.45,
   keyboardStep: 10,
 } as const;
+export const WINDOW_CONSTRAINTS = {
+  minWidth: 800,
+  minHeight: 560,
+  defaultWidth: 1100,
+  defaultHeight: 740,
+  searchBarMinWidth: 180,
+} as const;
 export const LAYOUT_STORAGE = {
   columns: 'contacts_active_cols',
   widths: 'contacts_col_widths',

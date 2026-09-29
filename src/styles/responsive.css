@@ -1,8 +1,6 @@
 /* Responsive workspace: constrain reading widths, allow the data grid to scroll. */
 .content-body,
-.main-area,
-.topbar-search,
-.search-input {
+.main-area {
   min-width: 0;
   min-height: 0;
 }
@@ -594,10 +592,11 @@
   }
 }
 .topbar-drag-area {
-  min-width: 0;
+  min-width: 180px;
 }
 .topbar-drag-area .topbar-search {
   width: 100%;
+  min-width: 180px;
 }
 @media (max-width: 600px) {
   .topbar-drag-area {

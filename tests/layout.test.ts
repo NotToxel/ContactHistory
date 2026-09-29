@@ -5,8 +5,10 @@ import {
   DEFAULT_COLUMN_WIDTHS,
   LAYOUT_STORAGE,
   SIDEBAR,
+  WINDOW_CONSTRAINTS,
   readLayout,
 } from '../src/app/layout';
+import tauriConfig from '../src-tauri/tauri.conf.json';
 import type { StorageReader } from '../src/lib/storage';
 
 const storage = (values: Record<string, string>): StorageReader => ({
@@ -82,5 +84,17 @@ describe('persisted contact layout', () => {
     const second = readLayout(storage({}));
     expect(second.colWidths).toEqual(DEFAULT_COLUMN_WIDTHS);
     expect(second.activeColKeys).toEqual(DEFAULT_COLUMNS);
+  });
+
+  it('enforces reasonable minimum window dimensions and search bar constraints', () => {
+    expect(WINDOW_CONSTRAINTS.minWidth).toBeGreaterThanOrEqual(800);
+    expect(WINDOW_CONSTRAINTS.minHeight).toBeGreaterThanOrEqual(560);
+    expect(WINDOW_CONSTRAINTS.searchBarMinWidth).toBeGreaterThanOrEqual(180);
+
+    const mainWindow = tauriConfig.app.windows[0];
+    expect(mainWindow.minWidth).toBe(WINDOW_CONSTRAINTS.minWidth);
+    expect(mainWindow.minHeight).toBe(WINDOW_CONSTRAINTS.minHeight);
+    expect(mainWindow.minWidth).toBeGreaterThanOrEqual(800);
+    expect(mainWindow.minHeight).toBeGreaterThanOrEqual(560);
   });
 });
