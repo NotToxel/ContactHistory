@@ -1,23 +1,10 @@
 <script lang="ts">
   import { api, type Contact } from '../../lib/ipc';
-  import { getPhotoUrl } from '../actions/avatars';
-  import PhotoChangePreview from '../../lib/PhotoChangePreview.svelte';
   import type { AppModel } from '../model.svelte';
   let { app, contact, rowIndex }: { app: AppModel; contact: Contact; rowIndex?: number } = $props();
   const isSelected = $derived(app.selectedContactKeySet.has(contact.resource_name));
   const isPreviewed = $derived(app.selectionPreviewKeySet.has(contact.resource_name));
   const isDeselectPreview = $derived(isPreviewed && app.selectionPreviewMode === 'deselect');
-  const photoChange = $derived(
-    app.compareTargetSeq === app.capture?.sequence
-      ? app.changesByResource.get(contact.resource_name)
-      : undefined,
-  );
-  const hasPhotoChange = $derived(
-    Boolean(
-      photoChange && getPhotoUrl(photoChange.before || {}) !== getPhotoUrl(photoChange.after || {}),
-    ),
-  );
-  let photoPreviewOpen = $state(false);
 </script>
 
 <tr
@@ -103,41 +90,6 @@
           </div>
           <span class="name-text">{app.getDisplayName(contact)}</span>
         </div>
-        {#if hasPhotoChange && photoChange}
-          <button
-            type="button"
-            class="contact-photo-change-toggle"
-            aria-expanded={photoPreviewOpen}
-            onclick={(event) => {
-              event.stopPropagation();
-              photoPreviewOpen = !photoPreviewOpen;
-            }}
-          >
-            <span class="material-symbols-outlined" aria-hidden="true"
-              >{photoPreviewOpen ? 'expand_less' : 'compare'}</span
-            >
-            {photoPreviewOpen ? 'Hide photo change' : 'Preview photo change'}
-          </button>
-          {#if photoPreviewOpen}
-            <div
-              class="contact-photo-change-panel"
-              onclick={(event) => event.stopPropagation()}
-              role="presentation"
-            >
-              <PhotoChangePreview
-                accountId={app.selected?.id || ''}
-                resourceName={contact.resource_name}
-                before={photoChange.before}
-                after={photoChange.after}
-                beforeSequence={app.compareBaseSeq === app.compareTargetSeq
-                  ? (app.captures.find((capture) => capture.sequence < (app.compareBaseSeq ?? 0))
-                      ?.sequence ?? null)
-                  : app.compareBaseSeq}
-                afterSequence={app.compareTargetSeq}
-              />
-            </div>
-          {/if}
-        {/if}
       </td>
     {:else if colKey === 'job'}
       {@const jobInfo = app.getOrganization(contact.payload)}
@@ -461,33 +413,3 @@
     {/if}
   {/each}
 </tr>
-
-<style>
-  .contact-photo-change-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin: 4px 0 0 48px;
-    padding: 2px 4px;
-    border: 0;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--google-blue);
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .contact-photo-change-toggle:hover {
-    background: var(--google-blue-surface);
-  }
-  .contact-photo-change-toggle:focus-visible {
-    outline: 2px solid var(--google-blue);
-    outline-offset: 2px;
-  }
-  .contact-photo-change-toggle .material-symbols-outlined {
-    font-size: 15px;
-  }
-  .contact-photo-change-panel {
-    margin: 8px 0 6px 48px;
-  }
-</style>
