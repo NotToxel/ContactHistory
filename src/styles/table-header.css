@@ -28,10 +28,17 @@
 
 .contacts-table {
   width: 100%;
-  min-width: max-content;
+  min-width: var(--columns-width);
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 14px;
+}
+
+.contact-window-spacer td {
+  padding: 0;
+  border: 0;
+  font-size: 0;
+  line-height: 0;
 }
 
 .contacts-table thead th {

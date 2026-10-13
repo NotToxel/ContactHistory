@@ -44,6 +44,23 @@
           },
         },
       ];
+      const requestedCount = Math.min(
+        10000,
+        Number(new URLSearchParams(location.search).get('contacts')) || contacts.length,
+      );
+      for (let index = contacts.length; index < requestedCount; index++) {
+        const displayName = `Test Contact ${String(index).padStart(5, '0')}`;
+        contacts.push({
+          resource_name: `people/stress-${index}`,
+          display_name: displayName,
+          version: 1,
+          payload: {
+            names: [{ displayName, givenName: 'Test', familyName: `Contact ${index}` }],
+            emailAddresses: [{ value: `contact-${index}@example.test` }],
+            memberships: memberships('contactGroups/custom-friends'),
+          },
+        });
+      }
       mockIPC(
         (cmd, args) => {
           switch (cmd) {
@@ -69,7 +86,7 @@
                 sequence,
                 started_at: '2026-09-18T10:00:00Z',
                 committed_at: '2026-09-18T10:00:00Z',
-                contact_count: 3,
+                contact_count: contacts.length,
                 group_count: 1,
                 media_complete: true,
               }));

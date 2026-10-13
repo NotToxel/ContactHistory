@@ -59,21 +59,31 @@
   outline-offset: -2px;
 }
 
-/* 
- * Hide the checkbox until hover or selected.
- * When hidden, collapse width & margin with smooth cubic-bezier transition,
- * letting the label icon and text sit at the standard alignment.
- */
+/* Swap the label icon and checkbox in the same slot without shifting the text. */
+.label-nav-indicator {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 18px;
+  flex-shrink: 0;
+}
+
+.label-nav-indicator .nav-icon {
+  grid-area: 1 / 1;
+  margin-right: 0;
+}
+
 .label-nav-item .nav-checkbox {
+  grid-area: 1 / 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 0;
-  max-width: 0;
+  width: 18px;
   height: 18px;
   margin-right: 0;
   opacity: 0;
-  transform: scale(0.7);
+  visibility: hidden;
   pointer-events: none;
   overflow: hidden;
   border-radius: 3px;
@@ -82,28 +92,28 @@
   box-sizing: border-box;
   flex-shrink: 0;
   transition:
-    width 0.18s cubic-bezier(0.2, 0, 0, 1),
-    max-width 0.18s cubic-bezier(0.2, 0, 0, 1),
-    margin-right 0.18s cubic-bezier(0.2, 0, 0, 1),
-    opacity 0.18s cubic-bezier(0.2, 0, 0, 1),
-    transform 0.18s cubic-bezier(0.2, 0, 0, 1),
+    opacity 0.15s ease,
     border-color 0.15s ease,
     background-color 0.15s ease;
 }
 
-/* Expand on hover, visible keyboard focus, or while labels are selected. */
+/* Show on hover, visible keyboard focus, or while labels are selected. */
 .label-nav-item:hover .nav-checkbox,
 .label-nav-item:focus-visible .nav-checkbox,
 .label-nav-item:has(.only-btn:focus-visible) .nav-checkbox,
 .sidebar-section.has-selected-labels .label-nav-item .nav-checkbox,
 .label-nav-item.is-selected .nav-checkbox,
 .label-nav-item .nav-checkbox.checked {
-  width: 18px;
-  max-width: 18px;
-  margin-right: 10px;
   opacity: 1;
-  transform: scale(1);
-  pointer-events: auto;
+  visibility: visible;
+}
+
+.label-nav-item:hover .nav-icon,
+.label-nav-item:focus-visible .nav-icon,
+.label-nav-item:has(.only-btn:focus-visible) .nav-icon,
+.sidebar-section.has-selected-labels .label-nav-item .nav-icon,
+.label-nav-item.is-selected .nav-icon {
+  visibility: hidden;
 }
 
 .label-nav-item:hover .nav-checkbox:not(.checked) {
@@ -158,7 +168,7 @@
   box-shadow: 0 1px 3px rgba(26, 115, 232, 0.3);
 }
 
-:root[data-theme='dark'] .label-nav-item .nav-checkbox {
+:root[data-theme='dark'] .label-nav-item .nav-checkbox:not(.checked) {
   background-color: var(--surface-base);
   border-color: var(--google-text-secondary);
 }

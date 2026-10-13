@@ -3,7 +3,7 @@
   import { getPhotoUrl } from '../actions/avatars';
   import PhotoChangePreview from '../../lib/PhotoChangePreview.svelte';
   import type { AppModel } from '../model.svelte';
-  let { app, contact }: { app: AppModel; contact: Contact } = $props();
+  let { app, contact, rowIndex }: { app: AppModel; contact: Contact; rowIndex?: number } = $props();
   const isSelected = $derived(app.selectedContactKeySet.has(contact.resource_name));
   const isPreviewed = $derived(app.selectionPreviewKeySet.has(contact.resource_name));
   const isDeselectPreview = $derived(isPreviewed && app.selectionPreviewMode === 'deselect');
@@ -26,6 +26,7 @@
   class:is-range-preview={isPreviewed}
   class:is-range-deselect-preview={isDeselectPreview}
   data-contact-res={contact.resource_name}
+  aria-rowindex={rowIndex}
   onmouseenter={(e) => app.previewContactSelection(contact.resource_name, e.shiftKey)}
   onmouseleave={() => app.endContactSelectionPreview(contact.resource_name)}
   onclick={(e) => {

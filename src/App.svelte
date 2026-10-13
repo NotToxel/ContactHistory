@@ -16,7 +16,6 @@
   import TopBar from './app/views/TopBar.svelte';
   import ContactPrint from './lib/ContactPrint.svelte';
   import ContextMenu from './lib/ContextMenu.svelte';
-  import { SIDEBAR } from './app/layout';
   import { AppModel } from './app/model.svelte';
   const app = new AppModel();
 </script>
@@ -112,24 +111,6 @@
     {:else if app.hasData && app.pageView !== 'onboarding'}
       <!-- Google Contacts Sidebar -->
       <Sidebar {app} />
-
-      {#if !app.sidebarCollapsed}
-        <div
-          class="sidebar-resizer"
-          class:is-resizing={app.isResizingSidebar}
-          onmousedown={app.startSidebarResize}
-          ondblclick={app.resetSidebarWidth}
-          onkeydown={app.handleSidebarResizerKeyDown}
-          role="slider"
-          aria-label="Resize sidebar"
-          aria-orientation="vertical"
-          aria-valuenow={app.sidebarWidth}
-          aria-valuemin={SIDEBAR.min}
-          aria-valuemax={SIDEBAR.max}
-          tabindex="0"
-          title="Drag to resize sidebar • Double-click to reset ({SIDEBAR.defaultWidth}px)"
-        ></div>
-      {/if}
 
       <!-- Main View Workspace -->
       <main class="main-area">

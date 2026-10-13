@@ -1,9 +1,10 @@
 <script lang="ts">
   import ContactsTableHeader from './ContactsTableHeader.svelte';
   import ContactsToolbar from './ContactsToolbar.svelte';
-  import ContactRow from './ContactRow.svelte';
+  import WindowedContactRows from './WindowedContactRows.svelte';
   import type { AppModel } from '../model.svelte';
   let { app }: { app: AppModel } = $props();
+  let viewport = $state<HTMLDivElement>();
 </script>
 
 <!-- Main Contacts Table List View (Screenshots 1 & 3) -->
@@ -80,8 +81,18 @@
   </div>
 {/if}
 
-<div class="table-scroll-container">
-  <table class="contacts-table">
+<div class="table-scroll-container" bind:this={viewport}>
+  <table
+    class="contacts-table"
+    aria-rowcount={app.contacts.length +
+      1 +
+      Number(app.favouriteContacts.length > 0) +
+      Number(app.otherContacts.length > 0)}
+    style="--columns-width: {app.activeColKeys.reduce(
+      (sum, key) => sum + app.colWidths[key],
+      0,
+    )}px;"
+  >
     <colgroup>
       {#each app.activeColKeys as colKey}
         <col style="width: {app.colWidths[colKey]}px;" />
@@ -98,9 +109,7 @@
             </div>
           </td>
         </tr>
-        {#each app.favouriteContacts as contact (contact.resource_name)}
-          <ContactRow {app} {contact} />
-        {/each}
+        <WindowedContactRows {app} {viewport} contacts={app.favouriteContacts} rowOffset={3} />
       {/if}
 
       {#if app.otherContacts.length > 0}
@@ -109,9 +118,12 @@
             <span>Contacts ({app.otherContacts.length})</span>
           </td>
         </tr>
-        {#each app.otherContacts as contact (contact.resource_name)}
-          <ContactRow {app} {contact} />
-        {/each}
+        <WindowedContactRows
+          {app}
+          {viewport}
+          contacts={app.otherContacts}
+          rowOffset={3 + (app.favouriteContacts.length > 0 ? app.favouriteContacts.length + 1 : 0)}
+        />
       {/if}
 
       {#if app.contacts.length === 0}
