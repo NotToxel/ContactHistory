@@ -9,6 +9,8 @@
     <script type="module">
       import { mockIPC, mockWindows } from '/node_modules/@tauri-apps/api/mocks.js';
       mockWindows('main');
+      const captureScenario = new URLSearchParams(location.search).get('capture');
+      let reconnected = false;
       const memberships = (...ids) =>
         ids.map((id) => ({ contactGroupMembership: { contactGroupResourceName: id } }));
       const contacts = [
@@ -45,6 +47,19 @@
       mockIPC(
         (cmd, args) => {
           switch (cmd) {
+            case 'capture_now':
+              if (captureScenario === 'permission' && !reconnected) {
+                throw 'GOOGLE_REAUTH_REQUIRED: Contact access was not granted. Reconnect Google and select the permission to view your contacts on the authorization screen.';
+              }
+              if (captureScenario === 'expired' && !reconnected) {
+                throw 'GOOGLE_REAUTH_REQUIRED: Google authorization has expired or was revoked. Reconnect Google to continue capturing contacts.';
+              }
+              if (captureScenario === 'network')
+                throw 'Unable to reach Google. Check your internet connection and try Capture now again.';
+              return { capture: { sequence: 2 }, is_new: false, change_count: 0 };
+            case 'reconnect_google':
+              reconnected = true;
+              return { id: 'test', subject: 'test', email: 'archive@example.test' };
             case 'list_accounts':
               return [{ id: 'test', subject: 'test', email: 'archive@example.test' }];
             case 'account_profile':

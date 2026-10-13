@@ -45,13 +45,6 @@
       </p>
 
       <div class="onboarding-form">
-        {#if app.error}
-          <div class="banner banner-error" style="margin-bottom: 4px; font-size: 13px;">
-            <span class="material-symbols-outlined" style="font-size: 18px;">error</span>
-            <span>{app.error}</span>
-          </div>
-        {/if}
-
         <button
           class="btn-primary"
           onclick={app.captureNow}
@@ -177,12 +170,6 @@
             style="width: 100%; height: 42px; padding: 0 14px; border: 1px solid var(--google-border); border-radius: 8px; font-family: inherit; font-size: 14px;"
           />
         </div>
-        {#if app.error}
-          <div class="banner banner-error" style="margin-top: 4px; font-size: 13px;">
-            <span class="material-symbols-outlined" style="font-size: 18px;">error</span>
-            <span>{app.error}</span>
-          </div>
-        {/if}
         <button
           class="btn-primary"
           onclick={app.connectNewAccount}

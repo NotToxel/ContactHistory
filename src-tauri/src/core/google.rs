@@ -25,6 +25,7 @@ use std::{
 use url::Url;
 
 const SCOPES: &str = "openid email https://www.googleapis.com/auth/contacts.readonly";
+const CONTACT_PERMISSION_REQUIRED: &str = "GOOGLE_REAUTH_REQUIRED: Contact access was not granted. Reconnect Google and select the permission to view your contacts on the authorization screen.";
 
 #[derive(Serialize, Deserialize)]
 pub struct ClientConfig {
@@ -67,6 +68,17 @@ pub fn disconnect(store: &Store, account: &Account) -> Result<()> {
 }
 
 pub fn connect(store: &Store, config: ClientConfig) -> Result<Account> {
+    connect_account(store, config, None)
+}
+
+pub fn reconnect(store: &Store, account: &Account) -> Result<Account> {
+    let config = serde_json::from_slice(&std::fs::read(
+        store.account_dir(&account.id)?.join("google-client.json"),
+    ).context("Saved Google client settings are missing. Use Add account to connect again with your OAuth client credentials.")?)?;
+    connect_account(store, config, Some(account))
+}
+
+fn connect_account(store: &Store, config: ClientConfig, expected: Option<&Account>) -> Result<Account> {
     if !config.client_id.ends_with(".apps.googleusercontent.com") {
         bail!("enter a Google desktop OAuth client ID");
     }
@@ -87,6 +99,9 @@ pub fn connect(store: &Store, config: ClientConfig) -> Result<Account> {
         .append_pair("code_challenge", &challenge)
         .append_pair("code_challenge_method", "S256")
         .append_pair("state", &state);
+    if let Some(account) = expected {
+        auth.query_pairs_mut().append_pair("login_hint", &account.email);
+    }
     open::that(auth.as_str()).context("could not open the system browser")?;
     let deadline = std::time::Instant::now() + Duration::from_secs(180);
     let code = loop {
@@ -145,6 +160,7 @@ pub fn connect(store: &Store, config: ClientConfig) -> Result<Account> {
         .send()?
         .error_for_status()?
         .json()?;
+    require_contact_scope(&token)?;
     let access = token
         .get("access_token")
         .and_then(Value::as_str)
@@ -167,6 +183,11 @@ pub fn connect(store: &Store, config: ClientConfig) -> Result<Account> {
         .get("email")
         .and_then(Value::as_str)
         .context("email missing")?;
+    if let Some(account) = expected {
+        if subject != account.subject {
+            bail!("Please reconnect using {}. The selected Google account is different.", account.email);
+        }
+    }
     let name = identity.get("name").and_then(Value::as_str).map(str::to_owned);
     let picture = identity.get("picture").and_then(Value::as_str).map(str::to_owned);
     let account = store.add_account(subject, email)?;
@@ -221,11 +242,13 @@ fn access_token(store: &Store, account: &Account) -> Result<String> {
     let config: ClientConfig = serde_json::from_slice(&std::fs::read(
         store.account_dir(&account.id)?.join("google-client.json"),
     )?)?;
-    let refresh = credential(account)?
-        .get_password()
-        .context("Google sign-in required")?;
+    let refresh = match credential(account)?.get_password() {
+        Ok(refresh) => refresh,
+        Err(keyring::Error::NoEntry) => bail!("GOOGLE_REAUTH_REQUIRED: Google sign-in is required. Reconnect Google to continue capturing contacts."),
+        Err(error) => return Err(error).context("Unable to read Google credentials from the system credential store"),
+    };
     let client = http()?;
-    let token: Value = client
+    let response = client
         .post("https://oauth2.googleapis.com/token")
         .form(&[
             ("client_id", config.client_id.as_str()),
@@ -233,14 +256,63 @@ fn access_token(store: &Store, account: &Account) -> Result<String> {
             ("refresh_token", refresh.as_str()),
             ("grant_type", "refresh_token"),
         ])
-        .send()?
-        .error_for_status()?
-        .json()?;
+        .send().context("Unable to reach Google. Check your internet connection and try Capture now again")?;
+    let status = response.status();
+    let token: Value = response.json().context("Google returned an unreadable token response. Try Capture now again")?;
+    let access = parse_access_token(status, &token)?;
+    if let Some(refresh) = token.get("refresh_token").and_then(Value::as_str) {
+        credential(account)?.set_password(refresh)?;
+    }
+    Ok(access)
+}
+
+fn parse_access_token(status: reqwest::StatusCode, token: &Value) -> Result<String> {
+    if !status.is_success() {
+        match token.get("error").and_then(Value::as_str) {
+            Some("invalid_grant") => bail!("GOOGLE_REAUTH_REQUIRED: Google authorization has expired or was revoked. Reconnect Google to continue capturing contacts."),
+            Some("invalid_client" | "unauthorized_client") => bail!("Google rejected the saved OAuth client credentials. Use Add account to connect again with a valid desktop OAuth client ID and secret."),
+            _ => bail!("Google token refresh failed (HTTP {status}). Try Capture now again; if it persists, check your Google OAuth client settings."),
+        }
+    }
+    require_contact_scope(token)?;
     Ok(token
         .get("access_token")
         .and_then(Value::as_str)
         .context("access token missing")?
         .to_owned())
+}
+
+fn require_contact_scope(token: &Value) -> Result<()> {
+    if let Some(scope) = token.get("scope").and_then(Value::as_str) {
+        if !scope.split_whitespace().any(|scope| matches!(scope,
+            "https://www.googleapis.com/auth/contacts.readonly" |
+            "https://www.googleapis.com/auth/contacts")) {
+            bail!(CONTACT_PERMISSION_REQUIRED);
+        }
+    }
+    Ok(())
+}
+
+fn check_api_authorization(status: reqwest::StatusCode, body: &str) -> Result<()> {
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        bail!("GOOGLE_REAUTH_REQUIRED: Google rejected your authorization. Reconnect Google to continue capturing contacts.");
+    }
+    if status == reqwest::StatusCode::FORBIDDEN {
+        if let Ok(body) = serde_json::from_str::<Value>(body) {
+            let insufficient_scope = body.pointer("/error/details").and_then(Value::as_array)
+                .is_some_and(|details| details.iter().any(|detail|
+                    detail.get("reason").and_then(Value::as_str) == Some("ACCESS_TOKEN_SCOPE_INSUFFICIENT")))
+                || body.pointer("/error/errors").and_then(Value::as_array)
+                    .is_some_and(|errors| errors.iter().any(|error|
+                        error.get("reason").and_then(Value::as_str) == Some("insufficientPermissions")))
+                || body.pointer("/error/message").and_then(Value::as_str)
+                    .is_some_and(|message| message.to_lowercase().contains("insufficient authentication scopes"));
+            if insufficient_scope {
+                bail!(CONTACT_PERMISSION_REQUIRED);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn get_page(client: &Client, url: Url, token: &str) -> Result<Value> {
@@ -254,6 +326,7 @@ fn get_page(client: &Client, url: Url, token: &str) -> Result<Value> {
                 if text.contains("EXPIRED_SYNC_TOKEN") {
                     bail!("EXPIRED_SYNC_TOKEN");
                 }
+                check_api_authorization(status, &text)?;
                 if status.as_u16() != 429 && !status.is_server_error() {
                     bail!(
                         "Google API HTTP {}: {}",
@@ -698,6 +771,55 @@ where
 mod delta_tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn missing_contact_scope_requires_consent_again() {
+        let token = json!({"access_token":"test", "scope":"openid email"});
+        assert_eq!(require_contact_scope(&token).unwrap_err().to_string(), CONTACT_PERMISSION_REQUIRED);
+        assert_eq!(parse_access_token(reqwest::StatusCode::OK, &token).unwrap_err().to_string(), CONTACT_PERMISSION_REQUIRED);
+        for scope in ["https://www.googleapis.com/auth/contacts.readonly", "https://www.googleapis.com/auth/contacts"] {
+            assert!(require_contact_scope(&json!({"scope":format!("openid email {scope}")})).is_ok());
+        }
+        // Some token responses omit scope; the API error remains the fallback.
+        assert!(require_contact_scope(&json!({"access_token":"test"})).is_ok());
+    }
+
+    #[test]
+    fn api_scope_errors_require_reconnection_but_other_forbidden_errors_do_not() {
+        for body in [
+            json!({"error":{"details":[{"reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}),
+            json!({"error":{"errors":[{"reason":"insufficientPermissions"}]}}),
+            json!({"error":{"message":"Request had insufficient authentication scopes."}}),
+        ] {
+            assert_eq!(check_api_authorization(reqwest::StatusCode::FORBIDDEN, &body.to_string()).unwrap_err().to_string(), CONTACT_PERMISSION_REQUIRED);
+        }
+        let disabled_api = json!({"error":{"details":[{"reason":"SERVICE_DISABLED"}], "status":"PERMISSION_DENIED"}});
+        assert!(check_api_authorization(reqwest::StatusCode::FORBIDDEN, &disabled_api.to_string()).is_ok());
+        assert!(check_api_authorization(reqwest::StatusCode::FORBIDDEN, "not json").is_ok());
+        assert!(check_api_authorization(reqwest::StatusCode::UNAUTHORIZED, "").unwrap_err().to_string().starts_with("GOOGLE_REAUTH_REQUIRED:"));
+    }
+
+    #[test]
+    fn revoked_refresh_token_requires_reconnection() {
+        let error = parse_access_token(reqwest::StatusCode::BAD_REQUEST, &json!({
+            "error": "invalid_grant", "error_description": "Token has been expired or revoked."
+        })).unwrap_err().to_string();
+        assert!(error.starts_with("GOOGLE_REAUTH_REQUIRED:"));
+        assert!(error.contains("Reconnect Google"));
+    }
+
+    #[test]
+    fn client_and_service_failures_do_not_claim_authorization_expired() {
+        for (status, body) in [
+            (reqwest::StatusCode::UNAUTHORIZED, json!({"error":"invalid_client"})),
+            (reqwest::StatusCode::SERVICE_UNAVAILABLE, json!({"error":"temporarily_unavailable"})),
+        ] {
+            let error = parse_access_token(status, &body).unwrap_err().to_string();
+            assert!(!error.contains("GOOGLE_REAUTH_REQUIRED"));
+            assert!(!error.contains("temporarily_unavailable"));
+        }
+        assert_eq!(parse_access_token(reqwest::StatusCode::OK, &json!({"access_token":"test-token"})).unwrap(), "test-token");
+        assert!(parse_access_token(reqwest::StatusCode::OK, &json!({})).is_err());
+    }
     #[test]
     fn delta_rebuilds_complete_current_state() {
         let base = vec![

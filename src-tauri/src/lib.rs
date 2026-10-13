@@ -9,7 +9,7 @@ fn store() -> Result<Store, String> {
     Store::new(core::storage::default_root().map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 fn error<T>(result: anyhow::Result<T>) -> Result<T, String> {
-    result.map_err(|e| e.to_string())
+    result.map_err(|e| format!("{e:#}"))
 }
 
 #[tauri::command]
@@ -31,6 +31,17 @@ async fn connect_google(client_id: String, client_secret: String) -> Result<Acco
     .await
     .map_err(|e| e.to_string())?
 }
+#[tauri::command]
+async fn reconnect_google(account_id: String) -> Result<Account, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Account, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(google::reconnect(&store, &account))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn capture_now(
     app: tauri::AppHandle,
@@ -538,6 +549,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_accounts,
             connect_google,
+            reconnect_google,
             capture_now,
             cancel_capture,
             list_captures,

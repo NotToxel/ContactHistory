@@ -30,6 +30,36 @@
   <!-- Account Popover Menu -->
   <AccountMenu {app} />
 
+  {#if app.error}
+    <div class="error-banner" role="alert">
+      <div class="banner-content">
+        <span class="material-symbols-outlined" aria-hidden="true">error</span>
+        <span class="error-banner-message">{app.error.replace('GOOGLE_REAUTH_REQUIRED: ', '')}</span
+        >
+      </div>
+      <div class="error-banner-actions">
+        {#if app.selected && app.error.includes('GOOGLE_REAUTH_REQUIRED:')}
+          <button class="banner-cancel-btn" disabled={app.busy} onclick={app.reconnectSelected}>
+            Reconnect Google
+          </button>
+        {:else if app.selected && app.error.startsWith('Capture failed.')}
+          <button class="banner-cancel-btn" disabled={app.busy} onclick={app.captureNow}
+            >Try again</button
+          >
+        {/if}
+        <button
+          class="toast-close-btn"
+          aria-label="Dismiss error"
+          onclick={() => {
+            app.error = '';
+          }}
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </div>
+    </div>
+  {/if}
+
   <!-- Capture in Progress Banner with Cancel -->
   {#if app.captureProgress}
     <div class="capture-banner">
@@ -43,7 +73,9 @@
           <span>{app.captureProgress.percent}%</span>
         {/if}
       </div>
-      <button class="banner-cancel-btn" onclick={app.cancelCapture}>Cancel</button>
+      {#if app.captureProgress.percent !== undefined}
+        <button class="banner-cancel-btn" onclick={app.cancelCapture}>Cancel</button>
+      {/if}
     </div>
   {/if}
 
@@ -71,7 +103,10 @@
     {#if app.initializing}
       <div class="initial-loading-container" aria-label="Loading contacts">
         <div class="initial-loading-spinner">
-          <span class="material-symbols-outlined spin" style="font-size: 32px; color: var(--google-blue);">sync</span>
+          <span
+            class="material-symbols-outlined spin"
+            style="font-size: 32px; color: var(--google-blue);">sync</span
+          >
         </div>
       </div>
     {:else if app.hasData && app.pageView !== 'onboarding'}

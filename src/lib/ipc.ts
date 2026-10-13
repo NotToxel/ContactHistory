@@ -90,6 +90,7 @@ export const api = {
   profile: (accountId: string) => invoke<AccountProfile>('account_profile', { accountId }),
   connect: (clientId: string, clientSecret: string) =>
     invoke<Account>('connect_google', { clientId, clientSecret }),
+  reconnect: (accountId: string) => invoke<Account>('reconnect_google', { accountId }),
   capture: (accountId: string) => invoke<CaptureOutcome>('capture_now', { accountId }),
   cancelCapture: (accountId: string) => invoke<boolean>('cancel_capture', { accountId }),
   importCsv: (accountId: string, path: string) =>

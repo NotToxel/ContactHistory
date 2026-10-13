@@ -31,6 +31,33 @@
 }
 
 /* Progress banner */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  padding: 10px 20px;
+  background: var(--google-danger-surface);
+  color: var(--google-danger);
+  border-bottom: 1px solid var(--google-danger);
+  font-size: 13px;
+}
+
+.error-banner .banner-content {
+  min-width: 0;
+}
+
+.error-banner-message {
+  overflow-wrap: anywhere;
+}
+
+.error-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .capture-banner {
   display: flex;
   align-items: center;

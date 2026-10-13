@@ -262,6 +262,16 @@
               <div class="setting-row-control">
                 <button
                   class="btn-secondary"
+                  disabled={!app.selected || app.busy}
+                  onclick={() => {
+                    app.showSettingsModal = false;
+                    app.reconnectSelected();
+                  }}
+                >
+                  Reconnect Google
+                </button>
+                <button
+                  class="btn-secondary"
                   style="color: var(--google-danger);"
                   disabled={!app.selected || app.busy}
                   onclick={app.disconnectSelected}

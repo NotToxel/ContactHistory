@@ -61,6 +61,7 @@ export async function selectAccount(
   account: Account,
 ): Promise<void> {
   this.missingFields = [];
+  this.error = '';
   this.selected = account;
   this.detail = undefined;
   this.chosenChange = undefined;
@@ -228,4 +229,39 @@ export async function connectNewAccount(
   } finally {
     this.busy = false;
   }
+}
+
+export async function reconnectSelected(
+  this: Pick<
+    AppModel,
+    | 'busy'
+    | 'captureProgress'
+    | 'error'
+    | 'selected'
+    | 'refreshAccounts'
+    | 'selectAccount'
+    | 'captureNow'
+  >,
+): Promise<void> {
+  if (!this.selected || this.busy) return;
+  const account = this.selected;
+  this.busy = true;
+  this.error = '';
+  this.captureProgress = {
+    account_id: account.id,
+    stage: 'contacts',
+    message: `Complete Google sign-in for ${account.email} in your browser...`,
+  };
+  try {
+    const reconnected = await api.reconnect(account.id);
+    await this.refreshAccounts();
+    await this.selectAccount(reconnected);
+  } catch (e) {
+    this.error = `GOOGLE_REAUTH_REQUIRED: Unable to reconnect Google. ${String(e)}`;
+    return;
+  } finally {
+    this.busy = false;
+    this.captureProgress = null;
+  }
+  await this.captureNow();
 }

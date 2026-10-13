@@ -181,7 +181,7 @@
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 1000px) {
+@media (max-width: 1200px) {
   .topbar-left {
     min-width: auto;
   }
@@ -192,7 +192,7 @@
     max-width: none;
   }
 }
-@media (max-width: 600px) {
+@media (max-width: 960px) {
   .topbar {
     flex-wrap: wrap;
     height: auto;
@@ -209,7 +209,7 @@
     display: none;
   }
   .topbar-right {
-    padding: 0;
+    padding: 0 112px 0 0;
     gap: 4px;
   }
   .window-controls {
@@ -586,16 +586,19 @@
   }
 }
 .topbar-drag-area {
-  min-width: 0;
+  min-width: 252px;
 }
 .topbar-drag-area .topbar-search {
   width: 100%;
 }
-@media (max-width: 600px) {
+@media (max-width: 960px) {
   .topbar-drag-area {
     display: flex;
     order: 3;
     flex-basis: 100%;
     height: auto;
+  }
+  .topbar-search-container {
+    min-width: 0;
   }
 }

@@ -3,6 +3,7 @@ import { api, listenCaptureProgress } from '../lib/ipc';
 import { readLayout } from './layout';
 import type { NavigationEntry } from './types';
 import type { AppModel } from './model.svelte';
+import { observeWindowState } from './window-state';
 export function registerLifecycle(this: AppModel): void {
   onMount(() => {
     let disposed = false;
@@ -18,10 +19,13 @@ export function registerLifecycle(this: AppModel): void {
     window.addEventListener('resize', this.updateStickyState, options);
     this.colorScheme.addEventListener('change', this.syncSystemTheme, options);
     Object.assign(this, readLayout());
+    const stopObservingWindow = observeWindowState(this);
 
     // Subscribe before loading the archive, and release late subscriptions on teardown.
     void listenCaptureProgress((progress) => {
-      if (!disposed) this.captureProgress = progress;
+      if (!disposed && this.busy && progress.account_id === this.selected?.id) {
+        this.captureProgress = progress;
+      }
     })
       .then((unlisten) => {
         if (disposed) unlisten();
@@ -42,6 +46,7 @@ export function registerLifecycle(this: AppModel): void {
     return () => {
       disposed = true;
       events.abort();
+      stopObservingWindow();
       this.unlistenProgress?.();
       this.unlistenProgress = undefined;
       clearTimeout(this.copiedTimeout);
@@ -72,13 +77,6 @@ async function loadSchedule(app: AppModel, disposed: () => boolean): Promise<voi
 }
 
 async function initializeArchive(app: AppModel, disposed: () => boolean): Promise<void> {
-  try {
-    const maximized = await api.winIsMaximized().catch(() => app.appWindow.isMaximized());
-    if (disposed()) return;
-    app.isMaximized = maximized;
-  } catch {
-    /* Window controls can be unavailable outside the desktop shell. */
-  }
   if (disposed()) return;
   await app.refreshAccounts();
   if (disposed()) return;

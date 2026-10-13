@@ -189,6 +189,7 @@ export class AppModel {
   restoreLocal = actions_accounts.restoreLocal.bind(this);
   disconnectSelected = actions_accounts.disconnectSelected.bind(this);
   connectNewAccount = actions_accounts.connectNewAccount.bind(this);
+  reconnectSelected = actions_accounts.reconnectSelected.bind(this);
   handleGlobalKeyDown = actions_keyboard.handleGlobalKeyDown.bind(this);
   handleGlobalKeyUp = actions_keyboard.handleGlobalKeyUp.bind(this);
   formatContactSummary = actions_contact_fields.formatContactSummary.bind(this);

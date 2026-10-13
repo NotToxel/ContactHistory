@@ -70,7 +70,7 @@ export async function captureNow(
     'busy' | 'captureProgress' | 'error' | 'selectAccount' | 'selected' | 'toastMessage'
   >,
 ): Promise<void> {
-  if (!this.selected) return;
+  if (!this.selected || this.busy) return;
   this.busy = true;
   this.error = '';
   this.captureProgress = {
@@ -91,7 +91,7 @@ export async function captureNow(
       this.toastMessage = '';
     }, 5000);
   } catch (e) {
-    this.error = String(e);
+    this.error = `Capture failed. ${String(e)}`;
   } finally {
     this.busy = false;
     this.captureProgress = null;
