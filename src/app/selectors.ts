@@ -83,10 +83,12 @@ export function searchResults(
   }
   matches.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return this.getDisplayName(a.contact).localeCompare(this.getDisplayName(b.contact));
+    return sortCollator.compare(this.getDisplayName(a.contact), this.getDisplayName(b.contact));
   });
   return matches.slice(0, 10).map((m) => m.contact);
 }
+
+const sortCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export function sortedContacts(
   this: Pick<AppModel, 'contacts' | 'getContactSortKey' | 'nameSortDirection' | 'nameSortField'>,
@@ -94,7 +96,7 @@ export function sortedContacts(
   return [...this.contacts].sort((a, b) => {
     const keyA = this.getContactSortKey(a, this.nameSortField);
     const keyB = this.getContactSortKey(b, this.nameSortField);
-    const cmp = keyA.localeCompare(keyB, undefined, { numeric: true, sensitivity: 'base' });
+    const cmp = sortCollator.compare(keyA, keyB);
     return this.nameSortDirection === 'asc' ? cmp : -cmp;
   });
 }

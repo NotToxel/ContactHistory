@@ -5,7 +5,7 @@ export function contactRowWindow(
   sectionTop: number,
   rowHeight: number,
 ) {
-  if (count <= 200) return { start: 0, end: count };
+  if (count <= 40) return { start: 0, end: count };
   const start = Math.min(
     count - 1,
     Math.max(0, Math.floor((scrollTop - sectionTop) / rowHeight) - 12),

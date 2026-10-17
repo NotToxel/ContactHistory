@@ -37,7 +37,7 @@ export async function onTopbarMouseDown(
   if (target.closest('button, input, a, select, textarea, [data-no-drag]')) return;
   if (e.detail === 2) {
     await this.winToggleMaximize();
-  } else {
+  } else if (!target.closest('[data-tauri-drag-region]')) {
     try {
       await this.appWindow.startDragging();
     } catch (_) {}

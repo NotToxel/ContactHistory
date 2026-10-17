@@ -85,10 +85,14 @@ fn cancel_capture(account_id: String) -> Result<bool, String> {
     Ok(capture::cancel(&account_id))
 }
 #[tauri::command]
-fn list_captures(account_id: String) -> Result<Vec<capture::Capture>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(capture::captures(&store, &account))
+async fn list_captures(account_id: String) -> Result<Vec<capture::Capture>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<capture::Capture>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::captures(&store, &account))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 async fn delete_snapshot(account_id: String, sequence: i64) -> Result<(), String> {
@@ -106,36 +110,52 @@ async fn reset_database() -> Result<(), String> {
     }).await.map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn capture_at_time(account_id: String, time: String) -> Result<Option<capture::Capture>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(capture::capture_at(&store, &account, &time))
+async fn capture_at_time(account_id: String, time: String) -> Result<Option<capture::Capture>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<capture::Capture>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::capture_at(&store, &account, &time))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn list_changes(
+async fn list_changes(
     account_id: String,
     sequence: i64,
     offset: i64,
 ) -> Result<Vec<capture::ChangeRow>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(capture::changes(&store, &account, sequence, offset))
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<capture::ChangeRow>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::changes(&store, &account, sequence, offset))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn list_all_changes(
+async fn list_all_changes(
     account_id: String,
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<capture::ChangelogEntry>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(capture::all_changes(&store, &account, limit, offset))
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<capture::ChangelogEntry>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::all_changes(&store, &account, limit, offset))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn list_groups(account_id: String, sequence: i64) -> Result<Vec<capture::GroupRow>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(capture::groups(&store, &account, sequence))
+async fn list_groups(account_id: String, sequence: i64) -> Result<Vec<capture::GroupRow>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<capture::GroupRow>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::groups(&store, &account, sequence))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 async fn list_contacts(
@@ -179,31 +199,47 @@ async fn list_avatars(
 }
 
 #[tauri::command]
-fn contact_history(account_id: String, resource_name: String) -> Result<Vec<capture::ContactHistoryEntry>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(capture::contact_history(&store, &account, &resource_name))
+async fn contact_history(account_id: String, resource_name: String) -> Result<Vec<capture::ContactHistoryEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<capture::ContactHistoryEntry>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::contact_history(&store, &account, &resource_name))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn contact_at_snapshot(account_id: String, sequence: i64, resource_name: String) -> Result<Option<capture::ContactRow>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(capture::contact_at_snapshot(&store, &account, sequence, &resource_name))
+async fn contact_at_snapshot(account_id: String, sequence: i64, resource_name: String) -> Result<Option<capture::ContactRow>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Option<capture::ContactRow>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::contact_at_snapshot(&store, &account, sequence, &resource_name))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn contact_snapshots(account_id: String, resource_name: String) -> Result<Vec<capture::ContactSnapshotEntry>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(capture::contact_snapshots(&store, &account, &resource_name))
+async fn contact_snapshots(account_id: String, resource_name: String) -> Result<Vec<capture::ContactSnapshotEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<capture::ContactSnapshotEntry>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::contact_snapshots(&store, &account, &resource_name))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn account_profile(account_id: String) -> Result<google::AccountProfile, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(google::profile(&store, &account))
+async fn account_profile(account_id: String) -> Result<google::AccountProfile, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<google::AccountProfile, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(google::profile(&store, &account))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[derive(Serialize)]
@@ -212,45 +248,61 @@ struct Health {
     last_capture: Option<String>,
 }
 #[tauri::command]
-fn account_health(account_id: String) -> Result<Health, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    let captures = error(capture::captures(&store, &account))?;
-    Ok(Health {
-        connected: store
-            .account_dir(&account.id)
-            .map_err(|e| e.to_string())?
-            .join("google-client.json")
-            .exists(),
-        last_capture: captures.first().map(|c| c.committed_at.clone()),
+async fn account_health(account_id: String) -> Result<Health, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<Health, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        let captures = error(capture::captures(&store, &account))?;
+        Ok(Health {
+            connected: store
+                .account_dir(&account.id)
+                .map_err(|e| e.to_string())?
+                .join("google-client.json")
+                .exists(),
+            last_capture: captures.first().map(|c| c.committed_at.clone()),
+        })
     })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn disconnect_account(account_id: String) -> Result<(), String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(google::disconnect(&store, &account))
+async fn disconnect_account(account_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(google::disconnect(&store, &account))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn contact_media(
+async fn contact_media(
     account_id: String,
     sequence: i64,
     resource_name: String,
 ) -> Result<Vec<media::MediaView>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(media::for_contact(
-        &store,
-        &account,
-        sequence,
-        &resource_name,
-    ))
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<media::MediaView>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(media::for_contact(
+            &store,
+            &account,
+            sequence,
+            &resource_name,
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-fn due_status(account_id: String) -> Result<scheduler::DueStatus, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(scheduler::status(&store, &account))
+async fn due_status(account_id: String) -> Result<scheduler::DueStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || -> Result<scheduler::DueStatus, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(scheduler::status(&store, &account))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 async fn capture_if_due(account_id: String) -> Result<Option<capture::Capture>, String> {
@@ -439,19 +491,23 @@ async fn restore_archive(source: String) -> Result<Account, String> {
 }
 
 #[tauri::command]
-fn compare_snapshots(
+async fn compare_snapshots(
     account_id: String,
     base_sequence: i64,
     target_sequence: i64,
 ) -> Result<Vec<capture::ChangeRow>, String> {
-    let store = store()?;
-    let account = error(store.account(&account_id))?;
-    error(capture::compare_snapshots(
-        &store,
-        &account,
-        base_sequence,
-        target_sequence,
-    ))
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<capture::ChangeRow>, String> {
+        let store = store()?;
+        let account = error(store.account(&account_id))?;
+        error(capture::compare_snapshots(
+            &store,
+            &account,
+            base_sequence,
+            target_sequence,
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
