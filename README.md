@@ -82,9 +82,6 @@ Google Contacts syncs in real-time, but it provides **no revision history, point
 - [Rust & Cargo](https://www.rust-lang.org) (MSVC toolchain)
 - Windows 10/11 with WebView2 Runtime
 
-> [!IMPORTANT]
-> This project strictly uses **Bun**. Do not use npm, npx, yarn, or pnpm.
-
 ### Setup & Run
 ```powershell
 # Install frontend dependencies
